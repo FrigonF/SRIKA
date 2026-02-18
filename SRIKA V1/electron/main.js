@@ -356,11 +356,42 @@ function launchUpdater(toVersion, downloadUrl, hash) {
     const updaterScript = app.isPackaged
         ? path.join(process.resourcesPath, 'updater', 'index.js')
         : path.resolve(__dirname, '../updater/index.js');
-    if (!fs.existsSync(updaterScript)) return;
-    const args = [updaterScript, '--from', app.getVersion(), '--to', toVersion, '--url', downloadUrl, '--hash', hash, '--pid', process.pid.toString()];
-    const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore', env: { ...process.env, ELECTRON_RUN_AS_NODE: 1 } });
-    child.unref();
-    app.quit();
+
+    logToFile(`[Update] Launching updater script: ${updaterScript}`);
+
+    if (!fs.existsSync(updaterScript)) {
+        logToFile(`[Update] ERROR: Updater script NOT FOUND at ${updaterScript}`);
+        return;
+    }
+
+    const { dialog } = require('electron');
+    dialog.showMessageBox({
+        type: 'info',
+        title: 'Update Available',
+        message: `SRIKA v${toVersion} is ready!`,
+        detail: 'The app will now restart to apply refinements and fixes.',
+        buttons: ['Update Now']
+    }).then(() => {
+        const args = [updaterScript, '--from', app.getVersion(), '--to', toVersion, '--url', downloadUrl, '--hash', hash, '--pid', process.pid.toString()];
+
+        try {
+            const child = spawn(process.execPath, args, {
+                detached: true,
+                stdio: 'ignore',
+                env: { ...process.env, ELECTRON_RUN_AS_NODE: 1 }
+            });
+
+            child.on('error', (err) => {
+                logToFile(`[Update] SPAWN ERROR: ${err.message}`);
+            });
+
+            child.unref();
+            logToFile('[Update] Updater spawned successfully. Quitting app.');
+            app.quit();
+        } catch (e) {
+            logToFile(`[Update] CRITICAL ERROR during spawn: ${e.message}`);
+        }
+    });
 }
 
 

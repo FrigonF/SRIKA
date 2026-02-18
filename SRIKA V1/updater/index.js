@@ -6,27 +6,41 @@ const { spawn, execSync } = require('child_process');
 
 // --- 1. SAFE ROOT RESOLUTION ---
 const EXE_DIR = path.dirname(process.execPath);
-const ROOT_DIR = path.resolve(EXE_DIR, '..');
+// Detect structure: Are we in a 'current' folder or flat?
+let ROOT_DIR;
+if (fs.existsSync(path.join(EXE_DIR, '..', 'resources'))) {
+    // Packaged but flat (C:\Program Files\SRIKA)
+    ROOT_DIR = EXE_DIR;
+} else {
+    // Dev or "Current" structure
+    ROOT_DIR = path.resolve(EXE_DIR, '..');
+}
 
-const CURRENT_DIR = path.join(ROOT_DIR, 'current');
+const CURRENT_DIR = (ROOT_DIR === EXE_DIR) ? ROOT_DIR : path.join(ROOT_DIR, 'current');
 const VERSIONS_DIR = path.join(ROOT_DIR, 'versions');
-const UPDATER_DIR = path.join(ROOT_DIR, 'updater');
+const UPDATER_DIR = (ROOT_DIR === EXE_DIR) ? path.join(ROOT_DIR, 'resources', 'updater') : path.join(ROOT_DIR, 'updater');
 const LOG_FILE = path.join(UPDATER_DIR, 'updater.log');
 const LOCK_FILE = path.join(ROOT_DIR, 'update.lock');
 
-// Ensure updater dir exists for logs
-if (!fs.existsSync(UPDATER_DIR)) {
-    try { fs.mkdirSync(UPDATER_DIR, { recursive: true }); } catch (e) { /* ignore */ }
-}
+// Ensure root-level dirs exist
+if (!fs.existsSync(VERSIONS_DIR)) try { fs.mkdirSync(VERSIONS_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 
 function log(msg) {
     const entry = `[${new Date().toISOString()}] ${msg}\n`;
-    try { fs.appendFileSync(LOG_FILE, entry); } catch (e) { console.error(e); }
+    try {
+        fs.appendFileSync(LOG_FILE, entry);
+    } catch (e) {
+        // Fallback to appdata if Program Files is read-only
+        const appData = process.env.APPDATA || process.env.USERPROFILE;
+        const fallbackLog = path.join(appData, 'srika_updater.log');
+        try { fs.appendFileSync(fallbackLog, entry); } catch (e2) { }
+    }
     console.log(msg);
 }
 
-log(`Updater started. v2 (Dependency-Free). ExecPath: ${process.execPath}`);
+log(`Updater started. v3 (Path-Aware). ExecPath: ${process.execPath}`);
 log(`Root detected: ${ROOT_DIR}`);
+log(`Current binary folder: ${CURRENT_DIR}`);
 
 // --- ARGS PARSING ---
 const args = process.argv.slice(2);
@@ -84,10 +98,10 @@ function compareVersions(v1, v2) {
 // --- CRASH RECOVERY ---
 function performRecovery() {
     log('Checking for broken installation state...');
-    const hasCurrent = fs.existsSync(CURRENT_DIR) && fs.existsSync(path.join(CURRENT_DIR, 'SRIKA.exe'));
+    const hasCurrent = fs.existsSync(path.join(CURRENT_DIR, 'SRIKA.exe'));
 
     if (!hasCurrent) {
-        log('CRITICAL: current/ folder missing or invalid.');
+        log('CRITICAL: App executable missing.');
         const backups = fs.readdirSync(ROOT_DIR)
             .filter(f => f.startsWith('backup_'))
             .sort((a, b) => b.localeCompare(a));
@@ -96,13 +110,13 @@ function performRecovery() {
             const latestBackup = path.join(ROOT_DIR, backups[0]);
             log(`Found backup: ${backups[0]}. Attempting restoration...`);
             try {
-                fs.renameSync(latestBackup, CURRENT_DIR);
-                log('Restoration successful.');
+                // This is risky in Program Files without elevation
+                // but recovery is better than nothing
+                execSync(`powershell -Command "Move-Item -Path '${latestBackup}' -Destination '${CURRENT_DIR}' -Force"`);
+                log('Restoration attempted via PowerShell.');
             } catch (e) {
                 log(`Restoration failed: ${e.message}`);
             }
-        } else {
-            log('No backups found.');
         }
     } else {
         log('Current installation appears valid.');
@@ -202,34 +216,73 @@ async function runUpdate() {
         log('Verifying extraction...');
         if (!fs.existsSync(path.join(extractPath, 'SRIKA.exe'))) throw new Error('Extracted content invalid (SRIKA.exe missing).');
 
-        // Atomic Swap Script
+        // --- ATOMIC SWAP GENERATOR ---
         const timestamp = Date.now();
-        const backupName = `backup_${timestamp}`;
-        const batPath = path.join(ROOT_DIR, `swap_${timestamp}.bat`);
-        const waitCmd = mainPid ? `:wait_exit\ntasklist /FI "PID eq ${mainPid}" | find ":" > nul\nif errorlevel 1 ( timeout /t 2 /nobreak >nul & goto wait_exit )\n` : `timeout /t 3 /nobreak >nul\n`;
+        const backupDir = path.join(ROOT_DIR, `backup_${timestamp}`);
+        const psScriptPath = path.join(ROOT_DIR, `swap_${timestamp}.ps1`);
 
-        const batContent = `@echo off
-echo [AtomicSwap] Starting...
-${waitCmd}
-if not exist "${CURRENT_DIR}" goto skip_backup
-move "${CURRENT_DIR}" "${path.join(ROOT_DIR, backupName)}"
-:skip_backup
-move "${extractPath}" "${CURRENT_DIR}"
-if %errorlevel% neq 0 (
-    echo [Error] Swap failed. Rolling back...
-    if exist "${path.join(ROOT_DIR, backupName)}" move "${path.join(ROOT_DIR, backupName)}" "${CURRENT_DIR}"
-)
-del "${zipPath}"
-del "${LOCK_FILE}"
-start "" "${path.join(CURRENT_DIR, 'SRIKA.exe')}"
-del "%~f0" & exit
+        // PowerShell Swap Script Logic:
+        // 1. Wait for Main Process to exit
+        // 2. Backup current files (except updater/logs/versions)
+        // 3. Move new files into place
+        // 4. Cleanup
+        // 5. Relaunch
+        const psScript = `
+$mainPid = ${mainPid || 0}
+if ($mainPid -gt 0) {
+    while (Get-Process -Id $mainPid -ErrorAction SilentlyContinue) {
+        Start-Sleep -Seconds 1
+    }
+}
+
+$rootDir = "${ROOT_DIR}"
+$backupDir = "${backupDir}"
+$extractPath = "${extractPath}"
+$exePath = Join-Path $rootDir "SRIKA.exe"
+
+try {
+    # 1. Create backup of current files
+    New-Item -ItemType Directory -Path $backupDir -Force
+    Get-ChildItem -Path $rootDir | Where-Object { 
+        $_.Name -ne "updater" -and 
+        $_.Name -ne "versions" -and 
+        $_.Name -ne "resources" -and
+        $_.Name -notlike "backup_*" -and
+        $_.Name -notlike "swap_*"
+    } | Move-Item -Destination $backupDir -Force
+
+    # Handle resources separately (keep asar if needed, but usually we replace all)
+    if (Test-Path (Join-Path $rootDir "resources")) {
+        Move-Item -Path (Join-Path $rootDir "resources") -Destination (Join-Path $backupDir "resources") -Force
+    }
+
+    # 2. Move new files in
+    Get-ChildItem -Path $extractPath | Move-Item -Destination $rootDir -Force
+    
+    # 3. Cleanup
+    Remove-Item -Path $extractPath -Recurse -Force
+    Remove-Item -Path "${LOCK_FILE}" -Force
+
+    # 4. Relaunch
+    Start-Process $exePath
+} catch {
+    Write-Error $_.Exception.Message
+    # Try emergency Relaunch
+    if (Test-Path $exePath) { Start-Process $exePath }
+}
+
+# Delete self
+Remove-Item $PSCommandPath -Force
 `;
 
-        fs.writeFileSync(batPath, batContent);
-        log('Spawning Swap Script...');
-        const subprocess = spawn('cmd.exe', ['/c', batPath], { detached: true, stdio: 'ignore', cwd: ROOT_DIR, windowsHide: true });
-        subprocess.unref();
+        fs.writeFileSync(psScriptPath, psScript);
+        log('Spawning Elevated Swap Script...');
 
+        // Launch PowerShell elevated to perform the swap
+        const launchCmd = `Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File '${psScriptPath}'" -Verb RunAs`;
+        execSync(`powershell -Command "${launchCmd}"`);
+
+        log('Elevation request sent. Exiting updater.');
         process.exit(0);
 
     } catch (err) {

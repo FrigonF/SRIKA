@@ -279,6 +279,13 @@ export function MainScreen() {
         </div>
       </div>
 
+      <ShortcutHandler
+        setActivePage={setActivePage}
+        setIsCameraOn={context.setIsCameraOn}
+        setEngineMode={setEngineMode}
+        emergencyStop={emergencyStop}
+      />
+
       {settingsProfile && (
         <PresetSettingsDialog
           profile={settingsProfile}
@@ -287,4 +294,41 @@ export function MainScreen() {
       )}
     </div >
   );
+}
+
+function ShortcutHandler({
+  setActivePage,
+  setIsCameraOn,
+  setEngineMode,
+  emergencyStop
+}: {
+  setActivePage: (p: PageType) => void,
+  setIsCameraOn: (val: boolean | ((p: boolean) => boolean)) => void,
+  setEngineMode: (m: any) => void,
+  emergencyStop: () => void
+}) {
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    // 1. Start Camera + Nav to Dashboard
+    const cleanupCamera = window.electronAPI.onToggleCamera(() => {
+      console.log('[ShortcutHandler] Starting Camera via Global Shortcut (Dashboard Focus)');
+      setActivePage('dashboard');
+      setIsCameraOn(true);
+      setEngineMode('ACTIVE');
+    });
+
+    // 2. Emergency Stop
+    const cleanupEmergency = window.electronAPI.onEmergencyStop(() => {
+      console.log('[ShortcutHandler] EMERGENCY STOP via Global Shortcut');
+      emergencyStop();
+    });
+
+    return () => {
+      cleanupCamera();
+      cleanupEmergency();
+    };
+  }, [setActivePage, setIsCameraOn, setEngineMode, emergencyStop]);
+
+  return null;
 }

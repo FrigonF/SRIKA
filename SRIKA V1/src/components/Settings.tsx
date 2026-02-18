@@ -42,7 +42,7 @@ export function Settings({ onNavigate }: SettingsProps) {
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] p-8">
+    <div className="h-full overflow-y-auto bg-[#0a0a0f] p-8 custom-scrollbar">
       {/* Header */}
       <div className="flex items-center gap-4 mb-12">
         <button
@@ -117,8 +117,8 @@ export function Settings({ onNavigate }: SettingsProps) {
                           key={theme}
                           onClick={() => settingsManager.update('general', { theme })}
                           className={`p-4 border-2 rounded-2xl font-semibold capitalize ${settings.general.theme === theme
-                              ? 'bg-gradient-to-br from-cyan-500 to-blue-500 border-cyan-500'
-                              : 'bg-[#0a0a0f]/50 border-gray-700 hover:border-gray-600'
+                            ? 'bg-gradient-to-br from-cyan-500 to-blue-500 border-cyan-500'
+                            : 'bg-[#0a0a0f]/50 border-gray-700 hover:border-gray-600'
                             }`}
                         >
                           {theme}

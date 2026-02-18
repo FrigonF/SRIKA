@@ -16,7 +16,7 @@ interface SrikaContextType {
   systemState: SystemState;
   setSystemState: (state: SystemState) => void;
   isCameraOn: boolean;
-  setIsCameraOn: (on: boolean) => void;
+  setIsCameraOn: (val: boolean | ((prev: boolean) => boolean)) => void;
   cameraConnected: boolean;
   setCameraConnected: (connected: boolean) => void;
   isMirrored: boolean;

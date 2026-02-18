@@ -5,7 +5,6 @@ import { SrikaProvider } from './context/SrikaContext';
 import { EngineProvider } from './context/EngineContext';
 import { MainScreen } from './components/MainScreen';
 import { InputController } from './engine/InputController';
-import { useSrika } from './context/SrikaContext';
 
 function AppContent() {
     const [isInitializing, setIsInitializing] = useState(true);
@@ -96,44 +95,11 @@ function AppContent() {
     return <MainScreen />;
 }
 
-function ShortcutHandler() {
-    const { setIsCameraOn, setSystemState } = useSrika();
-
-    useEffect(() => {
-        if (!window.electronAPI) return;
-
-        // 1. Toggle Camera
-        const cleanupCamera = window.electronAPI.onToggleCamera(() => {
-            console.log('[ShortcutHandler] Toggling Camera via Global Shortcut');
-            setIsCameraOn((prev: boolean) => !prev);
-        });
-
-        // 2. Emergency Stop
-        const cleanupEmergency = window.electronAPI.onEmergencyStop(() => {
-            console.log('[ShortcutHandler] EMERGENCY STOP via Global Shortcut');
-            setIsCameraOn(false);
-            setSystemState('ERROR');
-            // Trigger sidecar release
-            if (window.electronAPI?.triggerKey) {
-                window.electronAPI.triggerKey('emergency:stop');
-            }
-        });
-
-        return () => {
-            cleanupCamera();
-            cleanupEmergency();
-        };
-    }, [setIsCameraOn, setSystemState]);
-
-    return null;
-}
-
 export default function App() {
     return (
         <div className="dark w-full h-screen overflow-hidden bg-linear-to-br from-[#1e293b] via-[#0f172a] to-[#020617] text-white relative">
             <EngineProvider>
                 <SrikaProvider>
-                    <ShortcutHandler />
                     <AppContent />
                 </SrikaProvider>
             </EngineProvider>

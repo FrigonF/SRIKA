@@ -1,0 +1,72 @@
+{
+    "id": "asphalt9",
+    "name": "Asphalt 9: Legends",
+    "category": "Racing",
+    "inputMode": "GAMEPAD",
+    "engineConfig": {
+        "modelComplexity": 0,
+        "poseSmoothing": true,
+        "handsEnabled": true
+    },
+    "mappings": [
+        {
+            "id": "a-1",
+            "name": "Accelerate",
+            "key": "W",
+            "type": "BUILTIN",
+            "gestureId": "ACCEL",
+            "trained": true
+        },
+        {
+            "id": "a-2",
+            "name": "Steer Left",
+            "key": "A",
+            "type": "BUILTIN",
+            "gestureId": "STEER_L",
+            "trained": true
+        },
+        {
+            "id": "a-3",
+            "name": "Steer Right",
+            "key": "D",
+            "type": "BUILTIN",
+            "gestureId": "STEER_R",
+            "trained": true
+        },
+        {
+            "id": "a-4",
+            "name": "Brake",
+            "key": "S",
+            "type": "BUILTIN",
+            "gestureId": "BRAKE",
+            "trained": true
+        },
+        {
+            "id": "a-5",
+            "name": "Nitro",
+            "key": "SPACE",
+            "type": "BUILTIN",
+            "gestureId": "NITRO",
+            "trained": true
+        },
+        {
+            "id": "a-6",
+            "name": "Drift",
+            "key": "SPACE",
+            "type": "BUILTIN",
+            "gestureId": "DRIFT",
+            "trained": true
+        }
+    ],
+    "settingsSchema": [
+        {
+            "id": "steerSensitivity",
+            "label": "Steering Sensitivity",
+            "type": "range",
+            "min": 0.05,
+            "max": 0.5,
+            "step": 0.01,
+            "default": 0.22
+        }
+    ]
+}

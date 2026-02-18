@@ -1,0 +1,47 @@
+"In Game Actions"
+{
+    "actions"
+    {
+        "ASPHALT_DRIVE"
+        {
+            "title" "#Set_Asphalt_Drive"
+            "StickPadGyro"
+            {
+                "Steer"
+                {
+                    "title" "#Action_Steer"
+                    "input_mode" "joystick_move"
+                }
+            }
+            "AnalogTrigger"
+            {
+                "Throttle"
+                {
+                    "title" "#Action_Throttle"
+                }
+            }
+            "Button"
+            {
+                "Nitro"
+                {
+                    "title" "#Action_Nitro"
+                }
+                "Brake"
+                {
+                    "title" "#Action_Brake"
+                }
+            }
+        }
+    }
+    "localization"
+    {
+        "english"
+        {
+            "Set_Asphalt_Drive" "Driving Controls"
+            "Action_Steer" "Steering"
+            "Action_Throttle" "Acceleration"
+            "Action_Nitro" "Nitro Boost"
+            "Action_Brake" "Brake / Drift"
+        }
+    }
+}

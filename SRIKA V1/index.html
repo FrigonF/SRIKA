@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Srika</title>
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; style-src 'self' 'unsafe-inline';">
+  <style>
+    html,
+    body,
+    #root {
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #0f172a;
+    }
+
+    .w-full {
+      width: 100% !important;
+    }
+
+    .h-screen {
+      height: 100vh !important;
+    }
+
+    .flex {
+      display: flex !important;
+    }
+
+    .flex-col {
+      flex-direction: column !important;
+    }
+
+    .h-full {
+      height: 100% !important;
+    }
+  </style>
+  <script>
+    window.onerror = function (message, source, lineno, colno, error) {
+      console.error('[Renderer Error] ' + message + ' at ' + source + ':' + lineno);
+      if (window.electronAPI) {
+        window.electronAPI.logError({ message, source, lineno, stack: error ? error.stack : '' });
+      }
+    };
+    window.onunhandledrejection = function (event) {
+      console.error('[Renderer Unhandled Rejection]', event.reason);
+    };
+  </script>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script>console.log('!!! HTML_CORE_EXECUTING !!!');</script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

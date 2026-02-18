@@ -1,0 +1,94 @@
+{
+    "id": "tekken-official",
+    "name": "Tekken",
+    "category": "Fighting",
+    "inputMode": "STEAM_INPUT",
+    "steamAppId": 1778820,
+    "engineConfig": {
+        "modelComplexity": 1,
+        "poseSmoothing": true,
+        "handsEnabled": false
+    },
+    "mappings": [
+        {
+            "id": "t-1",
+            "name": "Jump",
+            "key": "W",
+            "type": "BUILTIN",
+            "gestureId": "W",
+            "trained": true
+        },
+        {
+            "id": "t-2",
+            "name": "Left",
+            "key": "A",
+            "type": "BUILTIN",
+            "gestureId": "A",
+            "trained": true
+        },
+        {
+            "id": "t-3",
+            "name": "Right",
+            "key": "D",
+            "type": "BUILTIN",
+            "gestureId": "D",
+            "trained": true
+        },
+        {
+            "id": "t-4",
+            "name": "Crouch",
+            "key": "S",
+            "type": "BUILTIN",
+            "gestureId": "S",
+            "trained": true
+        },
+        {
+            "id": "t-5",
+            "name": "Punch (Y)",
+            "key": "U",
+            "type": "BUILTIN",
+            "gestureId": "U",
+            "trained": true
+        },
+        {
+            "id": "t-6",
+            "name": "Kick (B)",
+            "key": "I",
+            "type": "BUILTIN",
+            "gestureId": "I",
+            "trained": true
+        },
+        {
+            "id": "t-7",
+            "name": "Low Punch (X)",
+            "key": "J",
+            "type": "BUILTIN",
+            "gestureId": "J",
+            "trained": true
+        },
+        {
+            "id": "t-8",
+            "name": "Low Kick (A)",
+            "key": "K",
+            "type": "BUILTIN",
+            "gestureId": "K",
+            "trained": true
+        },
+        {
+            "id": "t-9",
+            "name": "Guard",
+            "key": "P",
+            "type": "BUILTIN",
+            "gestureId": "GUARD",
+            "trained": true
+        },
+        {
+            "id": "t-10",
+            "name": "Rage Drive",
+            "key": ";",
+            "type": "BUILTIN",
+            "gestureId": "RAGE",
+            "trained": true
+        }
+    ]
+}

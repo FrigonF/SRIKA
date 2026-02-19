@@ -67,14 +67,41 @@ if (!gotTheLock) {
 
 
     app.whenReady().then(() => {
-        // Register the file handler for our custom scheme
-        protocol.handle('srika-asset', (request) => {
-            const url = request.url.replace('srika-asset://', '');
-            const filePath = path.join(process.resourcesPath, url);
-            return {
-                data: fs.createReadStream(filePath),
-                mimeType: url.endsWith('.wasm') ? 'application/wasm' : undefined
-            };
+        // Register the file handler for our custom scheme (Modern API)
+        protocol.handle('srika-asset', async (request) => {
+            try {
+                const url = new URL(request.url);
+                const assetPath = decodeURIComponent(url.hostname + url.pathname);
+                const filePath = path.join(process.resourcesPath, assetPath);
+
+                if (!fs.existsSync(filePath)) {
+                    logToFile(`[Protocol] File NOT found: ${filePath}`);
+                    return new Response('Not Found', { status: 404 });
+                }
+
+                const ext = path.extname(filePath).toLowerCase();
+                const mimeMap = {
+                    '.wasm': 'application/wasm',
+                    '.js': 'text/javascript',
+                    '.json': 'application/json',
+                    '.bin': 'application/octet-stream',
+                    '.data': 'application/octet-stream',
+                    '.tflite': 'application/octet-stream'
+                };
+
+                const data = fs.readFileSync(filePath);
+                return new Response(data, {
+                    status: 200,
+                    headers: {
+                        'Content-Type': mimeMap[ext] || 'application/octet-stream',
+                        'Cross-Origin-Resource-Policy': 'cross-origin',
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                });
+            } catch (err) {
+                logToFile(`[Protocol] Error handling request: ${err.message}`);
+                return new Response(err.message, { status: 500 });
+            }
         });
 
         // --- SECURITY HEADER INJECTION (Required for SharedArrayBuffer/WASM) ---

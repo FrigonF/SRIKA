@@ -140,6 +140,12 @@ export function LiveCameraPanel() {
 
     try {
       console.log("[Camera] Initializing AI Models...");
+      console.log(`[Camera] Cross-Origin Isolated: ${self.crossOriginIsolated}`);
+
+      if (!self.crossOriginIsolated && window.location.protocol === 'file:') {
+        console.warn("[Camera] WARNING: App is NOT cross-origin isolated. AI performance will be degraded or may fail.");
+      }
+
       pose = new Pose({ locateFile: (file) => locateFile(file, 'pose') });
       pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
       pose.onResults(onResults);
@@ -156,7 +162,8 @@ export function LiveCameraPanel() {
       handsRef.current = hands;
     } catch (err) {
       console.error("[Camera] AI Initialization Failed:", err);
-      setLoadError(err instanceof Error ? err.message : "AI Initialization Failed");
+      const msg = err instanceof Error ? err.message : "AI Initialization Failed";
+      setLoadError(`${msg} (COI: ${self.crossOriginIsolated})`);
     }
 
     // 2. The MASTER RAF Loop

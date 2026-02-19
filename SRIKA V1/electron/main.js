@@ -389,27 +389,57 @@ function startPythonBridge() {
 // Download a URL to a file, emitting progress % as we go
 function downloadFile(url, destPath, onProgress) {
     return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(destPath);
+        let file;
         const request = (reqUrl) => {
-            https.get(reqUrl, { headers: { 'User-Agent': 'SRIKA-Updater' } }, (res) => {
-                if (res.statusCode === 301 || res.statusCode === 302) {
-                    file.destroy();
+            const req = https.get(reqUrl, {
+                headers: { 'User-Agent': 'SRIKA-Updater' },
+                timeout: 30000 // 30s timeout
+            }, (res) => {
+                // Handle Redirects
+                if ([301, 302, 307, 308].includes(res.statusCode)) {
+                    logToFile(`[Update] Redirected from ${reqUrl} to ${res.headers.location}`);
                     return request(res.headers.location);
                 }
+
                 if (res.statusCode !== 200) {
-                    return reject(new Error(`HTTP ${res.statusCode}`));
+                    return reject(new Error(`HTTP ${res.statusCode} at ${reqUrl}`));
                 }
+
+                // Create WriteStream ONLY on 200 OK
+                file = fs.createWriteStream(destPath);
                 const total = parseInt(res.headers['content-length'] || '0', 10);
                 let downloaded = 0;
+
                 res.on('data', (chunk) => {
                     downloaded += chunk.length;
                     if (total > 0 && onProgress) onProgress(Math.round((downloaded / total) * 85));
                 });
+
                 res.pipe(file);
-                file.on('finish', () => { file.close(); resolve(); });
-                file.on('error', reject);
-                res.on('error', reject);
-            }).on('error', reject);
+
+                file.on('finish', () => {
+                    file.close();
+                    resolve();
+                });
+
+                file.on('error', (err) => {
+                    fs.unlink(destPath, () => { }); // Clean up partial file
+                    reject(err);
+                });
+
+                res.on('error', (err) => {
+                    file.destroy();
+                    fs.unlink(destPath, () => { });
+                    reject(err);
+                });
+            });
+
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Download timed out after 30 seconds'));
+            });
+
+            req.on('error', reject);
         };
         request(url);
     });
@@ -470,15 +500,30 @@ async function startInAppUpdate(version, downloadUrl, hash) {
 $src = '${extractDir.replace(/'/g, "''")}';
 $dst = '${appDir.replace(/'/g, "''")}';
 $exe = '${process.execPath.replace(/'/g, "''")}';
+$pid = ${process.pid};
 
-# Wait for app to exit
-Start-Sleep -Seconds 2;
+# Wait for Srika to exit
+Write-Host "Waiting for process $pid to exit...";
+$retry = 0;
+while ((Get-Process -Id $pid -ErrorAction SilentlyContinue) -and ($retry -lt 20)) {
+    Start-Sleep -Seconds 1;
+    $retry++;
+}
 
-# Robocopy: mirror extracted dir to install dir
-robocopy $src $dst /E /IS /IT /IM /MOVE /R:3 /W:2 | Out-Null;
+# Force kill if still alive
+if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
+    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue;
+}
+
+# Apply update using Robocopy Mirror (Clean Update)
+# /MIR mirrors a directory tree (equivalent to /E plus /PURGE)
+# /R:5 retries 5 times on failure, /W:2 waits 2 seconds between retries
+Write-Host "Applying update files...";
+robocopy "$src" "$dst" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS | Out-Null;
 
 # Relaunch the app
-Start-Process $exe;
+Write-Host "Relaunching Srika...";
+Start-Process "$exe";
 `;
         fs.writeFileSync(swapScript, psContent, 'utf8');
 
@@ -531,7 +576,7 @@ function checkForUpdates() {
         }
     }, (res) => {
         if (res.statusCode !== 200) {
-            logToFile(`[Update] Failed to check. Status: ${res.statusCode}`);
+            logToFile(`[Update] Failed to check.Status: ${res.statusCode} `);
             res.resume();
             return;
         }
@@ -557,7 +602,7 @@ function checkForUpdates() {
                 if (latestVersion.startsWith('v')) latestVersion = latestVersion.substring(1);
 
                 const currentVersion = app.getVersion();
-                logToFile(`[Update] Current: ${currentVersion}, Latest: ${latestVersion}`);
+                logToFile(`[Update] Current: ${currentVersion}, Latest: ${latestVersion} `);
 
                 if (compareVersions(latestVersion, currentVersion) <= 0) {
                     logToFile('[Update] Already up to date.');
@@ -586,17 +631,17 @@ function checkForUpdates() {
                     return;
                 }
 
-                logToFile(`[Update] Update available: v${latestVersion} — starting in-app update.`);
+                logToFile(`[Update] Update available: v${latestVersion} — starting in -app update.`);
                 startInAppUpdate(latestVersion, zipAsset.browser_download_url, expectedHash);
 
             } catch (e) {
-                logToFile(`[Update] ERROR in check loop: ${e.message}`);
+                logToFile(`[Update] ERROR in check loop: ${e.message} `);
             }
         });
     });
 
     req.on('error', (e) => {
-        logToFile(`[Update] Network error: ${e.message}`);
+        logToFile(`[Update] Network error: ${e.message} `);
     });
 }
 
@@ -614,7 +659,7 @@ ipcMain.on('trigger-key', (event, key) => {
                     logToFile(`[IPC] Landmarks flowing: ${global.lm_count} frames sent to Python.`);
                 }
             } else if (!key.includes('idle')) {
-                logToFile(`[IPC] Command: ${key}`);
+                logToFile(`[IPC] Command: ${key} `);
             }
         } else {
             if (!global.lm_warn) {
@@ -712,7 +757,7 @@ ipcMain.handle('update-global-shortcuts', (event, bindings) => {
                 });
             } catch { results[action] = false; }
         } else {
-            console.warn(`[Security] Rejected unsafe shortcut: ${accelerator}`);
+            console.warn(`[Security] Rejected unsafe shortcut: ${accelerator} `);
             results[action] = false;
         }
     }

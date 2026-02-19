@@ -67,6 +67,7 @@
             "concurrently": "^9.2.1",
             "electron": "^39.2.7",
             "electron-builder": "^26.4.0",
+            "javascript-obfuscator": "^4.2.2",
             "vite": "6.3.5",
             "wait-on": "^9.0.3"
       },
@@ -74,9 +75,10 @@
             "start": "concurrently -k \"npm run dev\" \"wait-on tcp:3000 && electron .\"",
             "dev": "vite",
             "build": "vite build",
+            "clean": "powershell -NoProfile -Command \"Remove-Item -Path 'dist', 'release', 'installer/1.0.6' -Recurse -Force -ErrorAction SilentlyContinue\"",
             "electron": "concurrently -k \"npm run dev\" \"wait-on tcp:3000 && electron .\"",
             "hackathon": "concurrently -k \"npm run dev --prefix gemini3hack\" \"wait-on tcp:3001 && electron gemini3hack\"",
-            "package": "npm run build && electron-builder build --win && node scripts/post_package.js"
+            "package": "npm run clean && npm run build && node scripts/obfuscate.js backup && node scripts/obfuscate.js && powershell -NoProfile -Command \"electron-builder build --win; $e=$?; node scripts/obfuscate.js restore; if (-not $e) { exit 1 }\" && node scripts/post_package.js"
       },
       "build": {
             "appId": "com.srika.app",

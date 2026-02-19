@@ -9,30 +9,43 @@ const DEST_BASE_DIR = path.join(ROOT_DIR, 'installer');
 const VERSION_DIR = path.join(DEST_BASE_DIR, VERSION);
 
 console.log(`[Post-Package] Organizing installer for v${VERSION}...`);
-
-if (!fs.existsSync(SRC_DIR)) {
-    console.error(`Error: Source directory ${SRC_DIR} not found.`);
-    process.exit(1);
-}
-
 if (!fs.existsSync(VERSION_DIR)) {
     fs.mkdirSync(VERSION_DIR, { recursive: true });
 }
 
-try {
-    const files = fs.readdirSync(SRC_DIR);
-    const installerFile = files.find(f => f.startsWith('SRIKA-Setup-') && f.endsWith('.exe'));
-
-    if (installerFile) {
-        const srcPath = path.join(SRC_DIR, installerFile);
-        const destPath = path.join(VERSION_DIR, installerFile);
-
-        fs.renameSync(srcPath, destPath);
-        console.log(`Successfully moved ${installerFile} to ${VERSION_DIR}`);
-    } else {
-        console.warn('Warning: SRIKA-Setup executable not found in output directory.');
-    }
-} catch (e) {
-    console.error(`Post-package move failed: ${e.message}`);
+console.log(`[Post-Package] Checking source: ${SRC_DIR}`);
+if (!fs.existsSync(SRC_DIR)) {
+    console.error(`[Post-Package] Error: Source directory ${SRC_DIR} not found.`);
     process.exit(1);
+}
+
+const files = fs.readdirSync(SRC_DIR);
+console.log(`[Post-Package] Files found: ${files.join(', ')}`);
+const installerFile = files.find(f => f.startsWith('SRIKA-Setup-') && f.endsWith('.exe'));
+
+if (installerFile) {
+    const srcPath = path.join(SRC_DIR, installerFile);
+    const destPath = path.join(VERSION_DIR, installerFile);
+
+    console.log(`[Post-Package] Moving ${srcPath} to ${destPath}`);
+    try {
+        if (fs.existsSync(destPath)) {
+            console.log(`[Post-Package] Destination exists. Attempting to overwrite...`);
+            fs.unlinkSync(destPath); // Remove old one first to avoid lock issues on rename
+        }
+        fs.renameSync(srcPath, destPath);
+        console.log(`[Post-Package] SUCCESS: Moved ${installerFile} to ${VERSION_DIR}`);
+    } catch (e) {
+        console.error(`[Post-Package] MOVE FAILED: ${e.message}`);
+        // Fallback: copy instead of move
+        try {
+            fs.copyFileSync(srcPath, destPath);
+            console.log(`[Post-Package] SUCCESS: Copied ${installerFile} (fallback)`);
+        } catch (copyErr) {
+            console.error(`[Post-Package] COPY FAILED TOO: ${copyErr.message}`);
+            process.exit(1);
+        }
+    }
+} else {
+    console.warn('[Post-Package] Warning: SRIKA-Setup executable not found.');
 }

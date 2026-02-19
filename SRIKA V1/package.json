@@ -89,6 +89,9 @@
                   "package.json"
             ],
             "asar": true,
+            "asarUnpack": [
+                  "**/*.node"
+            ],
             "directories": {
                   "output": "dist/installers"
             },
@@ -113,7 +116,7 @@
             "extraResources": [
                   {
                         "from": "electron",
-                        "to": "core",
+                        "to": "_core",
                         "filter": [
                               "input_bridge.py",
                               "xbox_adapter.py",
@@ -122,28 +125,28 @@
                   },
                   {
                         "from": "srika_native",
-                        "to": "srika_native",
+                        "to": "_srika_native",
                         "filter": [
                               "**/*"
                         ]
                   },
                   {
                         "from": "electron/resources",
-                        "to": "engine",
+                        "to": "_engine",
                         "filter": [
                               "**/*"
                         ]
                   },
                   {
                         "from": "updater",
-                        "to": "updater",
+                        "to": "_updater",
                         "filter": [
                               "index.js"
                         ]
                   },
                   {
                         "from": "public/mediapipe",
-                        "to": "mediapipe",
+                        "to": "_mediapipe",
                         "filter": [
                               "**/*"
                         ]

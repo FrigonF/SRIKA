@@ -72,7 +72,16 @@ if (!gotTheLock) {
         protocol.handle('srika-asset', async (request) => {
             try {
                 const url = new URL(request.url);
-                const assetPath = decodeURIComponent(url.hostname + url.pathname);
+                const logicalPath = decodeURIComponent(url.hostname + url.pathname);
+
+                // Map logical paths to obscured physical paths
+                let assetPath = logicalPath;
+                if (logicalPath.startsWith('mediapipe/')) {
+                    assetPath = logicalPath.replace('mediapipe/', '_mediapipe/');
+                } else if (logicalPath.startsWith('engine/')) {
+                    assetPath = logicalPath.replace('engine/', '_engine/');
+                }
+
                 const filePath = path.join(process.resourcesPath, assetPath);
 
                 if (!fs.existsSync(filePath)) {
@@ -240,7 +249,6 @@ ipcMain.handle('auth-open-login-window', async (event, url) => {
         });
         authWindow.loadURL(url);
         authWindow.once('ready-to-show', () => authWindow.show());
-
         const checkUrl = (targetUrl) => {
             const hasToken = targetUrl.includes('access_token=');
             if (hasToken || targetUrl.startsWith('srika://auth') || targetUrl.includes('srika.pages.dev')) {
@@ -274,6 +282,18 @@ function createWindow() {
     } else {
         win.loadURL('http://localhost:3000');
     }
+
+    // --- PRODUCTION HARDENING ---
+    if (app.isPackaged) {
+        win.removeMenu();
+        win.webContents.on('devtools-opened', () => {
+            win.webContents.closeDevTools();
+        });
+    }
+
+    win.once('ready-to-show', () => {
+        win.show();
+    });
 
     win.webContents.on('will-navigate', (event, url) => {
         if (!url.startsWith('http://localhost:3000') && !url.startsWith('file://')) event.preventDefault();
@@ -328,9 +348,9 @@ function startPythonBridge() {
         const rootPath = path.dirname(process.execPath);
         const bundledPython = path.join(rootPath, 'resources', 'python', 'python.exe');
 
-        // RESOLVE SCRIPT PATH (Bypass ASAR in production)
+        // RESOLVE SCRIPT PATH (Bypass ASAR in production - uses obscured _core)
         const scriptPath = app.isPackaged
-            ? path.join(process.resourcesPath, 'core', 'input_bridge.py')
+            ? path.join(process.resourcesPath, '_core', 'input_bridge.py')
             : path.join(__dirname, 'input_bridge.py');
 
         let cmd = 'py'; // Default for Dev
@@ -390,14 +410,24 @@ function startPythonBridge() {
 function downloadFile(url, destPath, onProgress) {
     return new Promise((resolve, reject) => {
         let file;
+        let redirectCount = 0;
+        const maxRedirects = 5;
+
         const request = (reqUrl) => {
             const req = https.get(reqUrl, {
-                headers: { 'User-Agent': 'SRIKA-Updater' },
+                headers: {
+                    'User-Agent': 'SRIKA-Updater',
+                    'Cache-Control': 'no-cache'
+                },
                 timeout: 30000 // 30s timeout
             }, (res) => {
                 // Handle Redirects
                 if ([301, 302, 307, 308].includes(res.statusCode)) {
-                    logToFile(`[Update] Redirected from ${reqUrl} to ${res.headers.location}`);
+                    if (redirectCount >= maxRedirects) {
+                        return reject(new Error('Too many redirects'));
+                    }
+                    redirectCount++;
+                    logToFile(`[Update] Redirect (${redirectCount}) to ${res.headers.location}`);
                     return request(res.headers.location);
                 }
 
@@ -515,11 +545,16 @@ if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
     Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue;
 }
 
+# Fix Permissions: Recursively clear Read-Only attributes
+Write-Host "Clearing Read-Only attributes in $dst...";
+attrib -R "$dst\*" /S /D
+
 # Apply update using Robocopy Mirror (Clean Update)
 # /MIR mirrors a directory tree (equivalent to /E plus /PURGE)
-# /R:5 retries 5 times on failure, /W:2 waits 2 seconds between retries
+# /A-:R ensures Read-Only attributes are stripped from copied files
+# /R:2 retries 2 times on failure, /W:2 waits 2 seconds between retries
 Write-Host "Applying update files...";
-robocopy "$src" "$dst" /MIR /R:5 /W:2 /NFL /NDL /NJH /NJS | Out-Null;
+robocopy "$src" "$dst" /MIR /A-:R /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null;
 
 # Relaunch the app
 Write-Host "Relaunching Srika...";

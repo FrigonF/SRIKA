@@ -530,19 +530,19 @@ async function startInAppUpdate(version, downloadUrl, hash) {
 $src = '${extractDir.replace(/'/g, "''")}';
 $dst = '${appDir.replace(/'/g, "''")}';
 $exe = '${process.execPath.replace(/'/g, "''")}';
-$pid = ${process.pid};
+$AppPid = ${process.pid};
 
 # Wait for Srika to exit
-Write-Host "Waiting for process $pid to exit...";
+Write-Host "Waiting for process $AppPid to exit...";
 $retry = 0;
-while ((Get-Process -Id $pid -ErrorAction SilentlyContinue) -and ($retry -lt 20)) {
+while ((Get-Process -Id $AppPid -ErrorAction SilentlyContinue) -and ($retry -lt 20)) {
     Start-Sleep -Seconds 1;
     $retry++;
 }
 
 # Force kill if still alive
-if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
-    Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue;
+if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) {
+    Stop-Process -Id $AppPid -Force -ErrorAction SilentlyContinue;
 }
 
 # Fix Permissions: Recursively clear Read-Only attributes

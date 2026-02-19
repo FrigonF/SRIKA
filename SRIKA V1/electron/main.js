@@ -357,28 +357,55 @@ function launchUpdater(toVersion, downloadUrl, hash) {
         ? path.join(process.resourcesPath, 'updater', 'index.js')
         : path.resolve(__dirname, '../updater/index.js');
 
-    logToFile(`[Update] Launching updater script: ${updaterScript}`);
+    logToFile(`[Update] Launching updater. Script: ${updaterScript}`);
 
     if (!fs.existsSync(updaterScript)) {
         logToFile(`[Update] ERROR: Updater script NOT FOUND at ${updaterScript}`);
         return;
     }
 
+    // Find node.exe - bundled alongside the Electron binary
+    const appDir = path.dirname(process.execPath);
+    const nodeExe = path.join(appDir, 'node.exe');
+    const nodeExists = fs.existsSync(nodeExe);
+    logToFile(`[Update] node.exe at ${nodeExe}: ${nodeExists}`);
+
     const { dialog } = require('electron');
     dialog.showMessageBox({
         type: 'info',
-        title: 'Update Available',
-        message: `SRIKA v${toVersion} is ready!`,
-        detail: 'The app will now restart to apply refinements and fixes.',
+        title: 'SRIKA Update Ready',
+        message: `v${toVersion} is available!`,
+        detail: `Installing update... The app will restart automatically.\n\nDo NOT close Task Manager if you see SRIKA downloading.`,
         buttons: ['Update Now']
     }).then(() => {
         const args = [updaterScript, '--from', app.getVersion(), '--to', toVersion, '--url', downloadUrl, '--hash', hash, '--pid', process.pid.toString()];
 
         try {
-            const child = spawn(process.execPath, args, {
+            let execPath, spawnArgs;
+
+            if (nodeExists) {
+                // Best case: use bundled node.exe directly
+                execPath = nodeExe;
+                spawnArgs = args;
+                logToFile('[Update] Using bundled node.exe to run updater.');
+            } else {
+                // Fallback: Use Electron binary with ELECTRON_RUN_AS_NODE
+                execPath = process.execPath;
+                spawnArgs = args;
+                logToFile('[Update] node.exe NOT found. Falling back to Electron + ELECTRON_RUN_AS_NODE.');
+            }
+
+            const spawnEnv = {
+                ...process.env,
+                ELECTRON_RUN_AS_NODE: '1',  // string '1', not number
+                ELECTRON_NO_ASAR: '1'
+            };
+
+            const child = spawn(execPath, spawnArgs, {
                 detached: true,
-                stdio: 'ignore',
-                env: { ...process.env, ELECTRON_RUN_AS_NODE: 1 }
+                stdio: ['ignore', 'ignore', 'ignore'],
+                env: spawnEnv,
+                windowsHide: false  // Show the window so user can see it in taskbar
             });
 
             child.on('error', (err) => {
@@ -386,10 +413,10 @@ function launchUpdater(toVersion, downloadUrl, hash) {
             });
 
             child.unref();
-            logToFile('[Update] Updater spawned successfully. Quitting app.');
-            app.quit();
+            logToFile(`[Update] Updater spawned (PID: ${child.pid}). Quitting app.`);
+            setTimeout(() => app.quit(), 500);
         } catch (e) {
-            logToFile(`[Update] CRITICAL ERROR during spawn: ${e.message}`);
+            logToFile(`[Update] CRITICAL SPAWN FAILURE: ${e.message}`);
         }
     });
 }

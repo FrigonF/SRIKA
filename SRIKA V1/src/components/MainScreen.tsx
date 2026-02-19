@@ -65,11 +65,26 @@ export function MainScreen() {
       console.error('[Trial] Session expired. Automatically stopping engine.');
       context.setIsCameraOn(false);
       setEngineMode('IDLE');
-
-      // Notify User
       window.alert("No Usage remains for today, Please Come Next Day OR Upgrade to Srika PRO to unlock Unlimited usage.");
     }
   }, [context.isTrialActive, context.trialRemainingTime, context.isCameraOn, setEngineMode]);
+
+  // Shared START/STOP logic — used by both the button and Ctrl+Shift+T
+  const handleStartStop = () => {
+    const isRunning = engineMode !== 'IDLE' && engineMode !== 'EMERGENCY_STOP';
+    if (!isRunning && context.isTrialActive && context.trialRemainingTime <= 0) {
+      window.alert("No Usage remains for today, Please Come Next Day OR Upgrade to Srika PRO to unlock Unlimited usage.");
+      return;
+    }
+    const nextActive = !isRunning;
+    context.setIsCameraOn(nextActive);
+    if (nextActive) {
+      setActivePage('dashboard'); // Always go to dashboard when starting
+      setEngineMode('ACTIVE');
+    } else {
+      setEngineMode('IDLE');
+    }
+  };
 
   const renderPage = () => {
     switch (activePage) {
@@ -191,24 +206,7 @@ export function MainScreen() {
           {/* Functional Buttons */}
           <div className="flex items-center gap-2 px-2 py-1 bg-black/20 rounded-xl border border-white/5">
             <button
-              onClick={() => {
-                const isRunning = engineMode !== 'IDLE' && engineMode !== 'EMERGENCY_STOP';
-
-                // Strict Trial Check
-                if (!isRunning && context.isTrialActive && context.trialRemainingTime <= 0) {
-                  window.alert("No Usage remains for today, Please Come Next Day OR Upgrade to Srika PRO to unlock Unlimited usage.");
-                  return;
-                }
-
-                const nextActive = !isRunning;
-
-                context.setIsCameraOn(nextActive);
-                if (nextActive) {
-                  setEngineMode('ACTIVE');
-                } else {
-                  setEngineMode('IDLE');
-                }
-              }}
+              onClick={handleStartStop}
               className={`flex items-center gap-2 px-3 py-1 rounded-lg font-bold transition-all ${engineMode !== 'IDLE' && engineMode !== 'EMERGENCY_STOP'
                 ? 'bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20'
                 : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
@@ -280,9 +278,7 @@ export function MainScreen() {
       </div>
 
       <ShortcutHandler
-        setActivePage={setActivePage}
-        setIsCameraOn={context.setIsCameraOn}
-        setEngineMode={setEngineMode}
+        onStartStop={handleStartStop}
         emergencyStop={emergencyStop}
       />
 
@@ -297,28 +293,22 @@ export function MainScreen() {
 }
 
 function ShortcutHandler({
-  setActivePage,
-  setIsCameraOn,
-  setEngineMode,
+  onStartStop,
   emergencyStop
 }: {
-  setActivePage: (p: PageType) => void,
-  setIsCameraOn: (val: boolean | ((p: boolean) => boolean)) => void,
-  setEngineMode: (m: any) => void,
+  onStartStop: () => void,
   emergencyStop: () => void
 }) {
   useEffect(() => {
     if (!window.electronAPI) return;
 
-    // 1. Start Camera + Nav to Dashboard
+    // Ctrl+Shift+T → same as clicking the START/STOP button
     const cleanupCamera = window.electronAPI.onToggleCamera(() => {
-      console.log('[ShortcutHandler] Starting Camera via Global Shortcut (Dashboard Focus)');
-      setActivePage('dashboard');
-      setIsCameraOn(true);
-      setEngineMode('ACTIVE');
+      console.log('[ShortcutHandler] Ctrl+Shift+T → toggle START/STOP');
+      onStartStop();
     });
 
-    // 2. Emergency Stop
+    // Emergency Stop
     const cleanupEmergency = window.electronAPI.onEmergencyStop(() => {
       console.log('[ShortcutHandler] EMERGENCY STOP via Global Shortcut');
       emergencyStop();
@@ -328,7 +318,7 @@ function ShortcutHandler({
       cleanupCamera();
       cleanupEmergency();
     };
-  }, [setActivePage, setIsCameraOn, setEngineMode, emergencyStop]);
+  }, [onStartStop, emergencyStop]);
 
   return null;
 }

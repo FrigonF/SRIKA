@@ -386,10 +386,6 @@ function startPythonBridge() {
     }
 }
 
-// ─── IN-PROCESS UPDATER ──────────────────────────────────────────────────────
-
-const crypto = require('crypto');
-
 // Download a URL to a file, emitting progress % as we go
 function downloadFile(url, destPath, onProgress) {
     return new Promise((resolve, reject) => {

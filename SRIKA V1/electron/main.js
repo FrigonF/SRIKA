@@ -512,7 +512,18 @@ function checkForUpdates() {
             try {
                 const release = JSON.parse(data);
 
+                // GUARD: Invalid or missing release data
+                if (!release || typeof release !== 'object') {
+                    logToFile('[Update] Invalid release response from GitHub.');
+                    return;
+                }
+
                 let latestVersion = release.tag_name;
+                if (!latestVersion || typeof latestVersion !== 'string') {
+                    logToFile('[Update] No valid tag_name found in release.');
+                    return;
+                }
+
                 if (latestVersion.startsWith('v')) latestVersion = latestVersion.substring(1);
 
                 const currentVersion = app.getVersion();
@@ -526,7 +537,7 @@ function checkForUpdates() {
                 const body = release.body || '';
                 const shaMatch = body.match(/SHA256:\s*([a-fA-F0-9]{64})/);
                 if (!shaMatch) {
-                    logToFile('[Update] CRITICAL: SHA256 not found in release body. Aborting.');
+                    logToFile('[Update] CRITICAL: SHA256 not found in release body. Skip.');
                     return;
                 }
                 const expectedHash = shaMatch[1].toLowerCase();
@@ -537,7 +548,7 @@ function checkForUpdates() {
                 }
 
                 const zipAsset = release.assets.find(a =>
-                    a.name.toLowerCase().endsWith('.zip') && a.state === 'uploaded'
+                    a && a.name && a.name.toLowerCase().endsWith('.zip') && a.state === 'uploaded'
                 );
 
                 if (!zipAsset) {
@@ -549,7 +560,7 @@ function checkForUpdates() {
                 startInAppUpdate(latestVersion, zipAsset.browser_download_url, expectedHash);
 
             } catch (e) {
-                logToFile(`[Update] Failed to parse response: ${e.message}`);
+                logToFile(`[Update] ERROR in check loop: ${e.message}`);
             }
         });
     });

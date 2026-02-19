@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { motion } from 'motion/react';
 import { Maximize2, Minimize2, VideoOff } from 'lucide-react';
 import { Pose, POSE_CONNECTIONS, Results, NormalizedLandmarkList } from '@mediapipe/pose';
@@ -14,6 +14,7 @@ export function LiveCameraPanel() {
   // --- REFS (Truth Source for Loop) ---
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const poseRef = useRef<Pose | null>(null);
   const handsRef = useRef<Hands | null>(null);
 
@@ -134,20 +135,29 @@ export function LiveCameraPanel() {
     };
 
     // 1. Create MediaPipe Instances (ONCE)
-    const pose = new Pose({ locateFile: (file) => locateFile(file, 'pose') });
-    pose.setOptions({ modelComplexity: 0, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-    pose.onResults(onResults);
-    poseRef.current = pose;
+    let pose: Pose | null = null;
+    let hands: Hands | null = null;
 
-    const hands = new Hands({ locateFile: (file) => locateFile(file, 'hands') });
-    hands.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-    hands.onResults((res) => {
-      if (Math.random() < 0.05) {
-        console.log(`[Camera] Hands heartbeat - count: ${res.multiHandLandmarks?.length || 0}`);
-      }
-      lastHandsRef.current = { landmarks: res.multiHandLandmarks, handedness: res.multiHandedness };
-    });
-    handsRef.current = hands;
+    try {
+      console.log("[Camera] Initializing AI Models...");
+      pose = new Pose({ locateFile: (file) => locateFile(file, 'pose') });
+      pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+      pose.onResults(onResults);
+      poseRef.current = pose;
+
+      hands = new Hands({ locateFile: (file) => locateFile(file, 'hands') });
+      hands.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+      hands.onResults((res) => {
+        if (Math.random() < 0.05) {
+          console.log(`[Camera] Hands heartbeat - count: ${res.multiHandLandmarks?.length || 0}`);
+        }
+        lastHandsRef.current = { landmarks: res.multiHandLandmarks, handedness: res.multiHandedness };
+      });
+      handsRef.current = hands;
+    } catch (err) {
+      console.error("[Camera] AI Initialization Failed:", err);
+      setLoadError(err instanceof Error ? err.message : "AI Initialization Failed");
+    }
 
     // 2. The MASTER RAF Loop
     const tick = async () => {
@@ -292,8 +302,8 @@ export function LiveCameraPanel() {
       clearInterval(hardwareInterval);
       if (rafId.current) cancelAnimationFrame(rafId.current);
       if (activeStream) activeStream.getTracks().forEach(t => t.stop());
-      pose.close();
-      hands.close();
+      if (pose) pose.close();
+      if (hands) hands.close();
     };
   }, []); // ABSOLUTELY NO DEPENDENCIES
 
@@ -314,10 +324,20 @@ export function LiveCameraPanel() {
       <div className="relative flex-1 bg-[#0f111a] min-h-0 flex items-center justify-center overflow-hidden">
         <video ref={videoRef} className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-500 ${!context.cameraConnected ? 'opacity-0' : 'opacity-100'}`} style={{ transform: context.isMirrored ? 'scaleX(-1)' : 'scaleX(1)' }} playsInline muted autoPlay />
         <canvas ref={canvasRef} className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${!context.cameraConnected ? 'hidden' : ''}`} style={{ transform: context.isMirrored ? 'scaleX(-1)' : 'scaleX(1)' }} />
-        {!context.cameraConnected && (
+
+        {!context.cameraConnected && !loadError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-600 bg-[#0f111a]">
             <VideoOff className="w-16 h-16 mb-4 opacity-20" />
             <p className="text-sm font-medium">Camera Inactive</p>
+          </div>
+        )}
+
+        {loadError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-red-500 bg-black/80 p-4 text-center">
+            <VideoOff className="w-12 h-12 mb-4 opacity-50" />
+            <p className="text-sm font-bold mb-2">AI ENGINE ERROR</p>
+            <p className="text-xs opacity-70 max-w-[200px] leading-relaxed">{loadError}</p>
+            <p className="text-[10px] mt-4 opacity-40">Please reinstall or contact support.</p>
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 {
       "name": "srika-desktop",
-      "version": "1.0.5",
+      "version": "1.0.6",
       "main": "electron/main.js",
       "private": true,
       "dependencies": {
@@ -83,6 +83,7 @@
             "productName": "SRIKA",
             "files": [
                   "dist/**/*",
+                  "public/mediapipe/**/*",
                   "electron/main.js",
                   "electron/preload.js",
                   "package.json"
@@ -138,6 +139,13 @@
                         "to": "updater",
                         "filter": [
                               "index.js"
+                        ]
+                  },
+                  {
+                        "from": "public/mediapipe",
+                        "to": "mediapipe",
+                        "filter": [
+                              "**/*"
                         ]
                   }
             ]

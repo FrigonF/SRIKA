@@ -71,34 +71,35 @@ class AuthManager {
 
                 // 3. MANDATORY: Restore existing session from safeStorage
                 try {
-                    console.log('[AuthManager] Fetching stored session from Main Process...');
-                    const session = await window.electronAPI.authLoadSession();
+                    console.log('[AuthManager] Fetching stored session (4s timeout)...');
+
+                    // Race the IPC call against a 4s timeout
+                    const session = await Promise.race([
+                        window.electronAPI.authLoadSession(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('IPC_TIMEOUT')), 4000))
+                    ]) as any;
 
                     if (session && session.accessToken) {
-                        console.log('[AuthManager] Session found. Injecting into Supabase...');
+                        console.log('[AuthManager] Session found. Restoring...');
                         const { data, error } = await supabase.auth.setSession({
                             access_token: session.accessToken,
                             refresh_token: session.refreshToken || ''
                         });
 
                         if (error) {
-                            console.error('[AuthManager] Stored session could not be fully restored:', error);
-                            // If it's a definitive "refresh token invalid", then we clear.
+                            console.error('[AuthManager] Session restoration failed:', error);
                             if (error.message.includes('refresh_token_not_found') || error.message.includes('Invalid Refresh Token')) {
-                                console.log('[AuthManager] Refresh token invalid. Clearing session.');
                                 await window.electronAPI.authClearSession();
-                            } else {
-                                console.log('[AuthManager] Error may be transient or recoverable. Supabase will handle refreshes.');
                             }
                         } else if (data.session?.user) {
-                            console.log('[AuthManager] Session restoration SUCCESSful for:', data.session.user.email);
+                            console.log('[AuthManager] Session restored successfully.');
                             await this.updateUserProfile(data.session.user);
                         }
                     } else {
                         console.log('[AuthManager] No stored session found.');
                     }
-                } catch (e) {
-                    console.error('[AuthManager] Error during session restoration:', e);
+                } catch (e: any) {
+                    console.error('[AuthManager] Session restoration bypassed:', e.message);
                 }
             }
 

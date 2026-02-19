@@ -61,55 +61,92 @@ function AppContent() {
     const [isInitializing, setIsInitializing] = useState(true);
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [authenticated, setAuthenticated] = useState(false);
+    const [initError, setInitError] = useState<string | null>(null);
 
     useEffect(() => {
         let authManager: any;
+        let isMounted = true;
+
         const onUserChanged = (user: any) => {
-            console.log('[App] Auth state changed notification:', user ? 'AUTHENTICATED' : 'LOGGED_OUT');
+            if (!isMounted) return;
+            console.log('[App] Auth state changed:', user ? 'AUTH' : 'OUT');
             setAuthenticated(!!user);
             if (user) setShowOnboarding(false);
         };
 
         const init = async () => {
-            console.log('[App] Starting initialization...');
+            console.log('[App] Initializing v1.0.6 Boot Sequence...');
 
-            // 1. Check local storage for onboarding
-            const onboarded = localStorage.getItem('srika_onboarding_done') === 'true';
+            // 1. Safety Timeout: Force boot after 10 seconds no matter what
+            const bootTimeout = setTimeout(() => {
+                if (isMounted) {
+                    setIsInitializing(current => {
+                        if (current) {
+                            console.warn('[App] BOOT TIMEOUT: Forcing initialization completion.');
+                            setInitError('Initialization timed out. Proceeding with safe defaults.');
+                            return false;
+                        }
+                        return false;
+                    });
+                }
+            }, 10000);
 
-            // 2. Initialize Managers
-            const { ProfileManager } = await import('./managers/ProfileManager');
-            const { settingsManager } = await import('./managers/SettingsManager');
-            const authModule = await import('./managers/AuthManager');
-            authManager = authModule.authManager;
+            try {
+                const onboarded = localStorage.getItem('srika_onboarding_done') === 'true';
 
-            // 3. IMPORTANT: Subscribe to Auth BEFORE initializing
-            authManager.on('user-changed', onUserChanged);
+                // Import and Init Managers
+                const [
+                    { ProfileManager },
+                    { settingsManager },
+                    authModule
+                ] = await Promise.all([
+                    import('./managers/ProfileManager'),
+                    import('./managers/SettingsManager'),
+                    import('./managers/AuthManager')
+                ]);
 
-            await Promise.all([
-                ProfileManager.init(),
-                settingsManager.init(),
-                authManager.init()
-            ]);
+                authManager = authModule.authManager;
+                authManager.on('user-changed', onUserChanged);
 
-            // 4. Verification Check
-            const currentUser = authManager.getUser();
-            console.log('[App] Post-init user check:', currentUser?.email || 'None');
+                // Run initialize methods with internal safety
+                await Promise.allSettled([
+                    ProfileManager.init(),
+                    settingsManager.init(),
+                    authManager.init()
+                ]);
 
-            if (currentUser) {
-                setAuthenticated(true);
-                setShowOnboarding(false);
-            } else if (!onboarded) {
-                setShowOnboarding(true);
+                if (!isMounted) return;
+
+                const currentUser = authManager.getUser();
+                if (currentUser) {
+                    setAuthenticated(true);
+                    setShowOnboarding(false);
+                } else if (!onboarded) {
+                    setShowOnboarding(true);
+                }
+
+                // Initialize Input Bridge
+                try {
+                    InputController.initializeSession();
+                } catch (e) {
+                    console.error('[App] InputController init failed:', e);
+                }
+
+            } catch (err: any) {
+                console.error('[App] CRITICAL BOOT ERROR:', err);
+                if (isMounted) setInitError(err.message || 'Unknown initialization error');
+            } finally {
+                clearTimeout(bootTimeout);
+                if (isMounted) {
+                    console.log('[App] Boot Sequence Finished');
+                    setIsInitializing(false);
+                }
             }
-
-            InputController.initializeSession();
-
-            // Initialization finished
-            console.log('[App] Initialization complete');
-            setIsInitializing(false);
         };
+
         init();
         return () => {
+            isMounted = false;
             if (authManager) authManager.off('user-changed', onUserChanged);
         };
     }, []);
@@ -118,10 +155,15 @@ function AppContent() {
         return (
             <div className="h-screen w-full flex items-center justify-center bg-[#0a0a0f]">
                 <div className="text-center">
-                    <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent mb-4">
+                    <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent mb-4 animate-pulse">
                         SRIKA
                     </h1>
-                    <div className="w-12 h-12 border-t-2 border-cyan-500 rounded-full animate-spin mx-auto"></div>
+                    <div className="w-12 h-12 border-t-2 border-cyan-500 rounded-full animate-spin mx-auto mb-6"></div>
+                    {initError && (
+                        <p className="text-[10px] text-blue-400/60 uppercase tracking-widest animate-pulse">
+                            {initError}
+                        </p>
+                    )}
                 </div>
             </div>
         );

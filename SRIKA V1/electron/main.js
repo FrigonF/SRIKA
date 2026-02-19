@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 
 // --- PRODUCTION SECURITY CONSTANTS ---
 const ALLOWED_CHANNELS = [

@@ -39,5 +39,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLoginItemSettings: () => ipcRenderer.invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => ipcRenderer.invoke('set-login-item-settings', { openAtLogin }),
     updateGlobalShortcuts: (bindings) => ipcRenderer.invoke('update-global-shortcuts', bindings),
-    onGlobalShortcut: (callback) => ipcRenderer.on('global-shortcut-triggered', (event, action) => callback(action))
+    onGlobalShortcut: (callback) => ipcRenderer.on('global-shortcut-triggered', (event, action) => callback(action)),
+
+    // In-App Update Events
+    onUpdateFound: (callback) => ipcRenderer.on('update-found', (_, data) => callback(data)),
+    onUpdateProgress: (callback) => ipcRenderer.on('update-progress', (_, data) => callback(data)),
+    onUpdateComplete: (callback) => ipcRenderer.on('update-complete', (_, data) => callback(data)),
+    onUpdateError: (callback) => ipcRenderer.on('update-error', (_, data) => callback(data)),
 });

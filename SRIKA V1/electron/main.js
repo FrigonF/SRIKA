@@ -352,82 +352,131 @@ function startPythonBridge() {
     }
 }
 
-function launchUpdater(toVersion, downloadUrl, hash) {
-    const updaterScript = app.isPackaged
-        ? path.join(process.resourcesPath, 'updater', 'index.js')
-        : path.resolve(__dirname, '../updater/index.js');
+// ─── IN-PROCESS UPDATER ──────────────────────────────────────────────────────
 
-    logToFile(`[Update] Launching updater. Script: ${updaterScript}`);
+const crypto = require('crypto');
 
-    if (!fs.existsSync(updaterScript)) {
-        logToFile(`[Update] ERROR: Updater script NOT FOUND at ${updaterScript}`);
-        return;
-    }
-
-    // Find node.exe - bundled alongside the Electron binary
-    const appDir = path.dirname(process.execPath);
-    const nodeExe = path.join(appDir, 'node.exe');
-    const nodeExists = fs.existsSync(nodeExe);
-    logToFile(`[Update] node.exe at ${nodeExe}: ${nodeExists}`);
-
-    const { dialog } = require('electron');
-    dialog.showMessageBox({
-        type: 'info',
-        title: 'SRIKA Update Ready',
-        message: `v${toVersion} is available!`,
-        detail: `Installing update... The app will restart automatically.\n\nDo NOT close Task Manager if you see SRIKA downloading.`,
-        buttons: ['Update Now']
-    }).then(() => {
-        const args = [updaterScript, '--from', app.getVersion(), '--to', toVersion, '--url', downloadUrl, '--hash', hash, '--pid', process.pid.toString()];
-
-        try {
-            let execPath, spawnArgs;
-
-            if (nodeExists) {
-                // Best case: use bundled node.exe directly
-                execPath = nodeExe;
-                spawnArgs = args;
-                logToFile('[Update] Using bundled node.exe to run updater.');
-            } else {
-                // Fallback: Use Electron binary with ELECTRON_RUN_AS_NODE
-                execPath = process.execPath;
-                spawnArgs = args;
-                logToFile('[Update] node.exe NOT found. Falling back to Electron + ELECTRON_RUN_AS_NODE.');
-            }
-
-            const spawnEnv = {
-                ...process.env,
-                ELECTRON_RUN_AS_NODE: '1',  // string '1', not number
-                ELECTRON_NO_ASAR: '1'
-            };
-
-            const child = spawn(execPath, spawnArgs, {
-                detached: true,
-                stdio: ['ignore', 'ignore', 'ignore'],
-                env: spawnEnv,
-                windowsHide: false  // Show the window so user can see it in taskbar
-            });
-
-            child.on('error', (err) => {
-                logToFile(`[Update] SPAWN ERROR: ${err.message}`);
-            });
-
-            child.unref();
-            logToFile(`[Update] Updater spawned (PID: ${child.pid}). Quitting app.`);
-            setTimeout(() => app.quit(), 500);
-        } catch (e) {
-            logToFile(`[Update] CRITICAL SPAWN FAILURE: ${e.message}`);
-        }
+// Download a URL to a file, emitting progress % as we go
+function downloadFile(url, destPath, onProgress) {
+    return new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(destPath);
+        const request = (reqUrl) => {
+            https.get(reqUrl, { headers: { 'User-Agent': 'SRIKA-Updater' } }, (res) => {
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                    file.destroy();
+                    return request(res.headers.location);
+                }
+                if (res.statusCode !== 200) {
+                    return reject(new Error(`HTTP ${res.statusCode}`));
+                }
+                const total = parseInt(res.headers['content-length'] || '0', 10);
+                let downloaded = 0;
+                res.on('data', (chunk) => {
+                    downloaded += chunk.length;
+                    if (total > 0 && onProgress) onProgress(Math.round((downloaded / total) * 85));
+                });
+                res.pipe(file);
+                file.on('finish', () => { file.close(); resolve(); });
+                file.on('error', reject);
+                res.on('error', reject);
+            }).on('error', reject);
+        };
+        request(url);
     });
 }
 
+// Verify SHA-256 of a file
+function verifySha256(filePath, expectedHash) {
+    const data = fs.readFileSync(filePath);
+    const actual = crypto.createHash('sha256').update(data).digest('hex');
+    return actual.toLowerCase() === expectedHash.toLowerCase();
+}
 
+// Central update state
+let updateInProgress = false;
+
+async function startInAppUpdate(version, downloadUrl, hash) {
+    if (updateInProgress) return;
+    updateInProgress = true;
+
+    const sendProgress = (percent, status) => {
+        logToFile(`[Update] ${percent}% — ${status}`);
+        if (win) win.webContents.send('update-progress', { percent, status });
+    };
+
+    try {
+        // 1. Notify renderer — show the update overlay
+        if (win) win.webContents.send('update-found', { version });
+        sendProgress(0, `Preparing update to v${version}...`);
+
+        // 2. Create cache directory in APPDATA (no admin needed)
+        const cacheDir = path.join(userDataPath, 'update-cache');
+        const zipPath = path.join(cacheDir, `${version}.zip`);
+        const extractDir = path.join(cacheDir, `extracted-${version}`);
+        if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+        if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
+
+        // 3. Download
+        sendProgress(2, 'Downloading update...');
+        await downloadFile(downloadUrl, zipPath, (p) => sendProgress(p, 'Downloading...'));
+
+        // 4. Verify integrity
+        sendProgress(86, 'Verifying integrity...');
+        if (!verifySha256(zipPath, hash)) {
+            throw new Error('SHA-256 mismatch — corrupted download');
+        }
+        sendProgress(88, 'Verified ✓');
+
+        // 5. Extract using PowerShell (built-in on Windows)
+        sendProgress(90, 'Extracting files...');
+        const { execSync } = require('child_process');
+        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force"`);
+
+        // 6. Build the elevated PowerShell swap script
+        sendProgress(95, 'Applying update...');
+        const appDir = path.dirname(process.execPath);
+        const swapScript = path.join(cacheDir, 'swap.ps1');
+        const psContent = `
+$src = '${extractDir.replace(/'/g, "''")}';
+$dst = '${appDir.replace(/'/g, "''")}';
+$exe = '${process.execPath.replace(/'/g, "''")}';
+
+# Wait for app to exit
+Start-Sleep -Seconds 2;
+
+# Robocopy: mirror extracted dir to install dir
+robocopy $src $dst /E /IS /IT /IM /MOVE /R:3 /W:2 | Out-Null;
+
+# Relaunch the app
+Start-Process $exe;
+`;
+        fs.writeFileSync(swapScript, psContent, 'utf8');
+
+        // 7. Tell renderer we're about to restart
+        sendProgress(99, 'Restarting...');
+        if (win) win.webContents.send('update-complete', { version });
+
+        // 8. Launch the elevated swap script and quit
+        await new Promise(r => setTimeout(r, 600)); // small pause for UI to show 100%
+        const { exec } = require('child_process');
+        exec(`powershell -NoProfile -Command "Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \\"${swapScript}\\"' -Verb RunAs"`, (err) => {
+            if (err) logToFile(`[Update] Swap script launch error: ${err.message}`);
+        });
+        setTimeout(() => app.quit(), 800);
+
+    } catch (err) {
+        logToFile(`[Update] FAILED: ${err.message}`);
+        if (win) win.webContents.send('update-error', { message: err.message });
+        updateInProgress = false;
+    }
+}
+
+// ─── VERSION CHECK ────────────────────────────────────────────────────────────
 
 // Helper: Compare semantic versions (Major.Minor.Patch)
 function compareVersions(v1, v2) {
     const parts1 = v1.split('.').map(Number);
     const parts2 = v2.split('.').map(Number);
-
     for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
         const a = parts1[i] || 0;
         const b = parts2[i] || 0;
@@ -463,51 +512,41 @@ function checkForUpdates() {
             try {
                 const release = JSON.parse(data);
 
-                // 1. Strict Version Parsing
                 let latestVersion = release.tag_name;
-                if (latestVersion.startsWith('v')) {
-                    latestVersion = latestVersion.substring(1);
-                }
+                if (latestVersion.startsWith('v')) latestVersion = latestVersion.substring(1);
 
                 const currentVersion = app.getVersion();
                 logToFile(`[Update] Current: ${currentVersion}, Latest: ${latestVersion}`);
 
                 if (compareVersions(latestVersion, currentVersion) <= 0) {
-                    logToFile('[Update] No new version available (or older).');
+                    logToFile('[Update] Already up to date.');
                     return;
                 }
 
-                // 2. SHA256 Extraction
                 const body = release.body || '';
                 const shaMatch = body.match(/SHA256:\s*([a-fA-F0-9]{64})/);
                 if (!shaMatch) {
-                    logToFile('[Update] CRITICAL: SHA256 hash not found in release body. Aborting.');
+                    logToFile('[Update] CRITICAL: SHA256 not found in release body. Aborting.');
                     return;
                 }
                 const expectedHash = shaMatch[1].toLowerCase();
-                logToFile(`[Update] Expected SHA256: ${expectedHash}`);
 
-                // 3. Strict Asset Selection
                 if (!release.assets || !Array.isArray(release.assets)) {
-                    console.log('[Update] Release has no assets.');
+                    logToFile('[Update] Release has no assets.');
                     return;
                 }
 
-                const zipAsset = release.assets.find(asset =>
-                    asset.name.toLowerCase().endsWith('.zip') &&
-                    asset.state === 'uploaded'
+                const zipAsset = release.assets.find(a =>
+                    a.name.toLowerCase().endsWith('.zip') && a.state === 'uploaded'
                 );
 
                 if (!zipAsset) {
-                    logToFile('[Update] No suitable .zip asset found.');
+                    logToFile('[Update] No .zip asset found.');
                     return;
                 }
 
-                const downloadUrl = zipAsset.browser_download_url;
-                logToFile(`[Update] Found: ${zipAsset.name} @ ${downloadUrl}`);
-
-                // 4. Launch Updater
-                launchUpdater(latestVersion, downloadUrl, expectedHash);
+                logToFile(`[Update] Update available: v${latestVersion} — starting in-app update.`);
+                startInAppUpdate(latestVersion, zipAsset.browser_download_url, expectedHash);
 
             } catch (e) {
                 logToFile(`[Update] Failed to parse response: ${e.message}`);

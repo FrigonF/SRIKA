@@ -5,6 +5,7 @@ import { SrikaProvider } from './context/SrikaContext';
 import { EngineProvider } from './context/EngineContext';
 import { MainScreen } from './components/MainScreen';
 import { InputController } from './engine/InputController';
+import { UpdateOverlay } from './components/UpdateOverlay';
 
 function AppContent() {
     const [isInitializing, setIsInitializing] = useState(true);
@@ -98,6 +99,8 @@ function AppContent() {
 export default function App() {
     return (
         <div className="dark w-full h-screen overflow-hidden bg-linear-to-br from-[#1e293b] via-[#0f172a] to-[#020617] text-white relative">
+            {/* Update overlay sits above everything — blocks all interaction during update */}
+            <UpdateOverlay />
             <EngineProvider>
                 <SrikaProvider>
                     <AppContent />

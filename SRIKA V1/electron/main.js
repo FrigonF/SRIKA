@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, powerSaveBlocker, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, powerSaveBlocker, safeStorage, shell, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -46,14 +46,10 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
 } else {
-    // Register custom protocol
-    if (process.defaultApp) {
-        if (process.argv.length >= 2) {
-            app.setAsDefaultProtocolClient('srika', process.execPath, [path.resolve(process.argv[1])]);
-        }
-    } else {
-        app.setAsDefaultProtocolClient('srika');
-    }
+    // Register custom srika-asset protocol for WASM/MediaPipe (bypass ASAR)
+    protocol.registerSchemesAsPrivileged([
+        { scheme: 'srika-asset', privileges: { secure: true, standard: true, supportFetchAPI: true, bypassCSP: true } }
+    ]);
 
     app.on('second-instance', (event, commandLine) => {
         if (win) {
@@ -71,6 +67,16 @@ if (!gotTheLock) {
 
 
     app.whenReady().then(() => {
+        // Register the file handler for our custom scheme
+        protocol.handle('srika-asset', (request) => {
+            const url = request.url.replace('srika-asset://', '');
+            const filePath = path.join(process.resourcesPath, url);
+            return {
+                data: fs.createReadStream(filePath),
+                mimeType: url.endsWith('.wasm') ? 'application/wasm' : undefined
+            };
+        });
+
         // --- SECURITY HEADER INJECTION (Required for SharedArrayBuffer/WASM) ---
         const { session } = require('electron');
         session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -85,7 +91,7 @@ if (!gotTheLock) {
             // 2. Fix: Inject CORP for trusted external resources (Google Images, UI-Avatars)
             // This satisfies the COEP 'require-corp' check without breaking 3rd party images
             const url = details.url.toLowerCase();
-            const isTrustedExternal = url.includes('googleusercontent.com') || url.includes('ui-avatars.com');
+            const isTrustedExternal = url.includes('googleusercontent.com') || url.includes('ui-avatars.com') || url.startsWith('srika-asset://');
 
             if (isTrustedExternal) {
                 responseHeaders['Cross-Origin-Resource-Policy'] = ['cross-origin'];

@@ -7,12 +7,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     close: () => ipcRenderer.send('window-close'),
     triggerKey: (key) => ipcRenderer.send('trigger-key', key),
     setGameMode: (on) => ipcRenderer.send('set-game-mode', on),
-    onAdminStatus: (callback) => ipcRenderer.on('admin-status', (event, status) => callback(status)),
-    onSteamStatus: (callback) => ipcRenderer.on('steam-status', (event, status) => callback(status)),
-    onTekkenStatus: (callback) => ipcRenderer.on('tekken-status', (event, status) => callback(status)),
-    onEmergencyStop: (callback) => ipcRenderer.on('emergency-stop-trigger', () => callback()),
-    onToggleCamera: (callback) => ipcRenderer.on('toggle-camera', () => callback()),
-    onSidecarAction: (callback) => ipcRenderer.on('sidecar-action', (event, tokens) => callback(tokens)),
+    onAdminStatus: (callback) => {
+        const listener = (event, status) => callback(status);
+        ipcRenderer.on('admin-status', listener);
+        return () => ipcRenderer.removeListener('admin-status', listener);
+    },
+    onSteamStatus: (callback) => {
+        const listener = (event, status) => callback(status);
+        ipcRenderer.on('steam-status', listener);
+        return () => ipcRenderer.removeListener('steam-status', listener);
+    },
+    onTekkenStatus: (callback) => {
+        const listener = (event, status) => callback(status);
+        ipcRenderer.on('tekken-status', listener);
+        return () => ipcRenderer.removeListener('tekken-status', listener);
+    },
+    onEmergencyStop: (callback) => {
+        const listener = () => callback();
+        ipcRenderer.on('emergency-stop-trigger', listener);
+        return () => ipcRenderer.removeListener('emergency-stop-trigger', listener);
+    },
+    onToggleCamera: (callback) => {
+        const listener = () => callback();
+        ipcRenderer.on('toggle-camera', listener);
+        return () => ipcRenderer.removeListener('toggle-camera', listener);
+    },
+    onSidecarAction: (callback) => {
+        const listener = (event, tokens) => callback(tokens);
+        ipcRenderer.on('sidecar-action', listener);
+        return () => ipcRenderer.removeListener('sidecar-action', listener);
+    },
     logError: (err) => ipcRenderer.send('log-error', err),
 
     sendInput: (intents) => ipcRenderer.send('input-update', intents),
@@ -25,9 +49,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     authClearSession: () => ipcRenderer.invoke('auth-clear-session'),
     authOpenLoginWindow: (url) => ipcRenderer.invoke('auth-open-login-window', url),
 
-    onAuthSuccess: (callback) => ipcRenderer.on('auth-success', (event, user) => callback(user)),
-    onAuthError: (callback) => ipcRenderer.on('auth-error', (event, error) => callback(error)),
-    onDeepLink: (callback) => ipcRenderer.on('on-deep-link', (event, url) => callback(url)),
+    onAuthSuccess: (callback) => {
+        const listener = (event, user) => callback(user);
+        ipcRenderer.on('auth-success', listener);
+        return () => ipcRenderer.removeListener('auth-success', listener);
+    },
+    onAuthError: (callback) => {
+        const listener = (event, error) => callback(error);
+        ipcRenderer.on('auth-error', listener);
+        return () => ipcRenderer.removeListener('auth-error', listener);
+    },
+    onDeepLink: (callback) => {
+        const listener = (event, url) => callback(url);
+        ipcRenderer.on('on-deep-link', listener);
+        return () => ipcRenderer.removeListener('on-deep-link', listener);
+    },
     logout: () => ipcRenderer.send('auth-logout'),
     resourcesPath: process.resourcesPath,
 
@@ -39,11 +75,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLoginItemSettings: () => ipcRenderer.invoke('get-login-item-settings'),
     setLoginItemSettings: (openAtLogin) => ipcRenderer.invoke('set-login-item-settings', { openAtLogin }),
     updateGlobalShortcuts: (bindings) => ipcRenderer.invoke('update-global-shortcuts', bindings),
-    onGlobalShortcut: (callback) => ipcRenderer.on('global-shortcut-triggered', (event, action) => callback(action)),
+    onGlobalShortcut: (callback) => {
+        const listener = (event, action) => callback(action);
+        ipcRenderer.on('global-shortcut-triggered', listener);
+        return () => ipcRenderer.removeListener('global-shortcut-triggered', listener);
+    },
 
     // In-App Update Events
-    onUpdateFound: (callback) => ipcRenderer.on('update-found', (_, data) => callback(data)),
-    onUpdateProgress: (callback) => ipcRenderer.on('update-progress', (_, data) => callback(data)),
-    onUpdateComplete: (callback) => ipcRenderer.on('update-complete', (_, data) => callback(data)),
-    onUpdateError: (callback) => ipcRenderer.on('update-error', (_, data) => callback(data)),
+    onUpdateFound: (callback) => {
+        const listener = (_, data) => callback(data);
+        ipcRenderer.on('update-found', listener);
+        return () => ipcRenderer.removeListener('update-found', listener);
+    },
+    onUpdateProgress: (callback) => {
+        const listener = (_, data) => callback(data);
+        ipcRenderer.on('update-progress', listener);
+        return () => ipcRenderer.removeListener('update-progress', listener);
+    },
+    onUpdateComplete: (callback) => {
+        const listener = (_, data) => callback(data);
+        ipcRenderer.on('update-complete', listener);
+        return () => ipcRenderer.removeListener('update-complete', listener);
+    },
+    onUpdateError: (callback) => {
+        const listener = (_, data) => callback(data);
+        ipcRenderer.on('update-error', listener);
+        return () => ipcRenderer.removeListener('update-error', listener);
+    },
 });

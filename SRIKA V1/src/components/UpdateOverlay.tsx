@@ -42,7 +42,7 @@ export function UpdateOverlay() {
             setUpdate(prev => prev ? { ...prev, percent: data.percent, status: data.status } : prev);
         });
 
-        const offComplete = window.electronAPI.onUpdateComplete((data: { version: string }) => {
+        const offComplete = window.electronAPI.onUpdateComplete(() => {
             setUpdate(prev => prev ? { ...prev, percent: 100, status: 'Restarting...', complete: true } : prev);
         });
 
@@ -51,10 +51,10 @@ export function UpdateOverlay() {
         });
 
         return () => {
-            offFound?.();
-            offProgress?.();
-            offComplete?.();
-            offError?.();
+            if (offFound) offFound();
+            if (offProgress) offProgress();
+            if (offComplete) offComplete();
+            if (offError) offError();
         };
     }, []);
 

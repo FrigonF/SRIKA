@@ -124,13 +124,13 @@ export function LiveCameraPanel() {
 
     // Helper to resolve MediaPipe asset paths
     const locateFile = (file: string, pkg: 'pose' | 'hands') => {
-      // Unified relative path
-      const localUrl = `./mediapipe/${pkg}/${file}`;
-      console.log(`[MediaPipe] Requesting ${pkg}/${file} -> ${localUrl}`);
+      // In production, we use the custom srika-asset protocol to bypass ASAR
+      const isProd = window.location.protocol === 'file:';
+      const localUrl = isProd
+        ? `srika-asset://mediapipe/${pkg}/${file}`
+        : `./mediapipe/${pkg}/${file}`;
 
-      if (file.endsWith('.wasm') || file.endsWith('.data')) {
-        console.log(`[MediaPipe] CRITICAL ASSET: ${file}`);
-      }
+      console.log(`[MediaPipe] Requesting ${pkg}/${file} -> ${localUrl}`);
       return localUrl;
     };
 

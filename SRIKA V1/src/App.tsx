@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import { OnboardingScreen } from './components/OnboardingScreen';
 import { AuthScreen } from './components/AuthScreen';
 import { SrikaProvider } from './context/SrikaContext';
@@ -7,12 +7,69 @@ import { MainScreen } from './components/MainScreen';
 import { InputController } from './engine/InputController';
 import { UpdateOverlay } from './components/UpdateOverlay';
 
+// --- Error Boundary for Robustness ---
+interface Props { children: ReactNode; }
+interface State { hasError: boolean; error?: Error; }
+
+class ErrorBoundary extends Component<Props, State> {
+    public state: State = { hasError: false };
+
+    public static getDerivedStateFromError(error: Error): State {
+        return { hasError: true, error };
+    }
+
+    public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        console.error("[App] Uncaught render error:", error, errorInfo);
+        if (window.electronAPI?.logError) {
+            window.electronAPI.logError({
+                message: error.message,
+                stack: error.stack,
+                componentStack: errorInfo.componentStack
+            });
+        }
+    }
+
+    public render() {
+        if (this.state.hasError) {
+            return (
+                <div className="h-screen w-full flex items-center justify-center bg-[#0a0a0f] text-white p-8">
+                    <div className="max-w-md text-center">
+                        <h1 className="text-3xl font-bold text-rose-500 mb-4">Something went wrong</h1>
+                        <p className="text-gray-400 mb-8 text-sm leading-relaxed">
+                            The application encountered a rendering error. We've logged the details and you can try restarting the app.
+                        </p>
+                        <div className="bg-black/40 rounded-lg p-4 mb-8 text-left border border-white/5">
+                            <code className="text-[10px] text-rose-300/70 break-all">
+                                {this.state.error?.message}
+                            </code>
+                        </div>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-6 py-2 bg-white/10 hover:bg-white/15 rounded-lg text-sm font-medium transition-colors"
+                        >
+                            Reload Application
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
 function AppContent() {
     const [isInitializing, setIsInitializing] = useState(true);
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [authenticated, setAuthenticated] = useState(false);
 
     useEffect(() => {
+        let authManager: any;
+        const onUserChanged = (user: any) => {
+            console.log('[App] Auth state changed notification:', user ? 'AUTHENTICATED' : 'LOGGED_OUT');
+            setAuthenticated(!!user);
+            if (user) setShowOnboarding(false);
+        };
+
         const init = async () => {
             console.log('[App] Starting initialization...');
 
@@ -22,15 +79,11 @@ function AppContent() {
             // 2. Initialize Managers
             const { ProfileManager } = await import('./managers/ProfileManager');
             const { settingsManager } = await import('./managers/SettingsManager');
-            const { authManager } = await import('./managers/AuthManager');
+            const authModule = await import('./managers/AuthManager');
+            authManager = authModule.authManager;
 
             // 3. IMPORTANT: Subscribe to Auth BEFORE initializing
-            // This ensures we catch the state change emitted DURING init() restoration
-            authManager.on('user-changed', (user: any) => {
-                console.log('[App] Auth state changed notification:', user ? 'AUTHENTICATED' : 'LOGGED_OUT');
-                setAuthenticated(!!user);
-                if (user) setShowOnboarding(false);
-            });
+            authManager.on('user-changed', onUserChanged);
 
             await Promise.all([
                 ProfileManager.init(),
@@ -56,6 +109,9 @@ function AppContent() {
             setIsInitializing(false);
         };
         init();
+        return () => {
+            if (authManager) authManager.off('user-changed', onUserChanged);
+        };
     }, []);
 
     if (isInitializing) {
@@ -98,14 +154,15 @@ function AppContent() {
 
 export default function App() {
     return (
-        <div className="dark w-full h-screen overflow-hidden bg-linear-to-br from-[#1e293b] via-[#0f172a] to-[#020617] text-white relative">
-            {/* Update overlay sits above everything — blocks all interaction during update */}
-            <UpdateOverlay />
-            <EngineProvider>
-                <SrikaProvider>
-                    <AppContent />
-                </SrikaProvider>
-            </EngineProvider>
-        </div>
+        <ErrorBoundary>
+            <div className="dark w-full h-screen overflow-hidden bg-linear-to-br from-[#1e293b] via-[#0f172a] to-[#020617] text-white relative">
+                <UpdateOverlay />
+                <EngineProvider>
+                    <SrikaProvider>
+                        <AppContent />
+                    </SrikaProvider>
+                </EngineProvider>
+            </div>
+        </ErrorBoundary>
     );
 }

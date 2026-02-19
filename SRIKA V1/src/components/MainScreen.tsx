@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import { Minimize2, Maximize2, X, Activity, Power, ShieldAlert, LogOut, User, ChevronDown } from 'lucide-react';
 import { VerticalTaskBar, PageType } from './VerticalTaskBar';
@@ -70,7 +70,7 @@ export function MainScreen() {
   }, [context.isTrialActive, context.trialRemainingTime, context.isCameraOn, setEngineMode]);
 
   // Shared START/STOP logic — used by both the button and Ctrl+Shift+T
-  const handleStartStop = () => {
+  const handleStartStop = useCallback(() => {
     const isRunning = engineMode !== 'IDLE' && engineMode !== 'EMERGENCY_STOP';
     if (!isRunning && context.isTrialActive && context.trialRemainingTime <= 0) {
       window.alert("No Usage remains for today, Please Come Next Day OR Upgrade to Srika PRO to unlock Unlimited usage.");
@@ -84,7 +84,7 @@ export function MainScreen() {
     } else {
       setEngineMode('IDLE');
     }
-  };
+  }, [engineMode, context, setEngineMode]);
 
   const renderPage = () => {
     switch (activePage) {
@@ -315,8 +315,8 @@ function ShortcutHandler({
     });
 
     return () => {
-      cleanupCamera();
-      cleanupEmergency();
+      if (cleanupCamera) cleanupCamera();
+      if (cleanupEmergency) cleanupEmergency();
     };
   }, [onStartStop, emergencyStop]);
 

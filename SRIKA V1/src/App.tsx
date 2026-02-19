@@ -197,7 +197,7 @@ function AppContent() {
 export default function App() {
     return (
         <ErrorBoundary>
-            <div className="dark w-full h-screen overflow-hidden bg-linear-to-br from-[#1e293b] via-[#0f172a] to-[#020617] text-white relative">
+            <div className="w-full h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)] relative transition-colors duration-300">
                 <UpdateOverlay />
                 <EngineProvider>
                     <SrikaProvider>

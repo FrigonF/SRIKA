@@ -1,17 +1,7 @@
 
 declare global {
     interface Window {
-        electronAPI: {
-            readJson: (filename: string) => Promise<any>;
-            writeJson: (filename: string, data: any) => Promise<{ success: boolean; error?: string }>;
-            getLoginItemSettings: () => Promise<{ openAtLogin: boolean }>;
-            setLoginItemSettings: (openAtLogin: boolean) => Promise<{ success: boolean }>;
-            updateGlobalShortcuts: (bindings: Record<string, string>) => Promise<Record<string, boolean>>;
-            onGlobalShortcut: (callback: (action: string) => void) => void;
-            getAppVersion: () => Promise<string>;
-            // Add other existing APIs if needed to silence linter, or use 'any' for now
-            [key: string]: any;
-        };
+        electronAPI: any;
     }
 }
 
@@ -143,7 +133,7 @@ class SettingsManager {
         this.state = {
             ...this.state,
             [section]: {
-                ...this.state[section],
+                ...(this.state[section] as any),
                 ...updates
             }
         };
@@ -176,21 +166,39 @@ class SettingsManager {
 
     private applyTheme(theme: string) {
         const root = document.documentElement;
+
+        // Remove existing theme classes
+        root.classList.remove('dark', 'light');
+
         if (theme === 'auto') {
-            // Detect system preference
             const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             if (isDark) root.classList.add('dark');
-            else root.classList.remove('dark');
+            else root.classList.add('light');
+
+            // Listen for system changes if not already listening
+            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            const handleChange = (e: MediaQueryListEvent) => {
+                if (this.state.general.theme === 'auto') {
+                    if (e.matches) {
+                        root.classList.add('dark');
+                        root.classList.remove('light');
+                    } else {
+                        root.classList.add('light');
+                        root.classList.remove('dark');
+                    }
+                }
+            };
+            mediaQuery.removeEventListener('change', handleChange as any); // Clear old
+            mediaQuery.addEventListener('change', handleChange as any);
         } else {
-            if (theme === 'dark') root.classList.add('dark');
-            else root.classList.remove('dark');
+            root.classList.add(theme);
         }
     }
 
     private async applyLaunchOnBoot(enabled: boolean) {
         try {
             await window.electronAPI.setLoginItemSettings(enabled);
-        } catch (e) {
+        } catch (e: any) {
             console.error('Failed to set launch on boot:', e);
         }
     }
@@ -199,7 +207,7 @@ class SettingsManager {
         try {
             // bindings is object { startStop: "Ctrl+T", ... }
             await window.electronAPI.updateGlobalShortcuts(bindings);
-        } catch (e) {
+        } catch (e: any) {
             console.error('Failed to register shortcuts:', e);
         }
     }
@@ -211,7 +219,7 @@ class SettingsManager {
 
         const doSave = () => {
             window.electronAPI.writeJson('settings.json', this.state)
-                .catch(e => console.error('Failed to save settings:', e));
+                .catch((e: any) => console.error('Failed to save settings:', e));
         };
 
         if (immediate) {

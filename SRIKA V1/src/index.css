@@ -34,11 +34,24 @@
   scrollbar-color: #06b6d4 rgba(15, 23, 42, 0.5);
 }
 
-/* Force Dark Mode defaults to fix the "white-out" */
+/* Theme Variables - Defaults to Light */
 :root {
-  --background: #0f172a !important;
-  --foreground: #ffffff !important;
-  --border: rgba(255, 255, 255, 0.1) !important;
+  --background: #ffffff;
+  --foreground: #020617;
+  --border: rgba(0, 0, 0, 0.1);
+  --ring: #3b82f6;
+  --card-bg: rgba(255, 255, 255, 0.8);
+  --card-border: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Mode Overrides */
+.dark {
+  --background: #0f172a;
+  --foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.1);
+  --card-bg: rgba(30, 41, 59, 0.8);
+  --card-border: rgba(255, 255, 255, 0.1);
+  color-scheme: dark;
 }
 
 /* Patch missing Tailwind v4 classes for static index.css */

@@ -1,6 +1,6 @@
 {
       "name": "srika-desktop",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "description": "SRIKA AI Gesture Controller",
       "author": "SRIKA Team",
       "main": "electron/main.js",

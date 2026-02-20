@@ -1,23 +1,53 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ArrowLeft, TrendingUp, Target, Clock, Activity } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { VerticalTaskBar, PageType } from './VerticalTaskBar';
-import { ProfileManager } from '../managers/ProfileManager';
+import { supabase } from '../lib/supabase';
+import { authManager } from '../managers/AuthManager';
 
 interface AnalyticsProps {
-  onNavigate: (screen: PageType) => void;
+  onNavigate: (screen: any) => void;
 }
 
 export function Analytics({ onNavigate }: AnalyticsProps) {
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('7d');
-  const profiles = ProfileManager.getProfiles();
+  const [cloudStats, setCloudStats] = useState({ total_actions: 0, total_seconds: 0, sessions_count: 0, accuracy: 89.7 });
+  const [isLoading, setIsLoading] = useState(true);
 
-  const totalStats = useMemo(() => {
-    const sessions = profiles.reduce((sum, p) => sum + (p.total_sessions || 0), 0);
-    const hours = profiles.reduce((sum, p) => sum + (p.total_hours_used || 0), 0);
-    return { sessions, hours };
-  }, [profiles]);
+  useEffect(() => {
+    const fetchStats = async () => {
+      const user = authManager.getUser();
+      if (!user || user.id === 'guest-user') {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('user_usage')
+          .select('total_hours, total_actions, total_sessions')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "no rows found"
+
+        if (data) {
+          setCloudStats({
+            total_actions: parseInt(data.total_actions as any) || 0,
+            total_seconds: (parseFloat(data.total_hours as any) || 0) * 3600,
+            sessions_count: data.total_sessions || 0,
+            accuracy: 89.7
+          });
+        }
+      } catch (err) {
+        console.error('[Analytics] Error fetching cloud stats:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [timeRange]);
 
   const accuracyData = [
     { day: 'Mon', accuracy: 82 },
@@ -30,11 +60,11 @@ export function Analytics({ onNavigate }: AnalyticsProps) {
   ];
 
   const actionData = [
-    { action: 'Punch', count: 342 },
-    { action: 'Kick', count: 218 },
-    { action: 'Jump', count: 156 },
-    { action: 'Walk', count: 523 },
-    { action: 'Duck', count: 98 },
+    { action: 'Punch', count: Math.floor(cloudStats.total_actions * 0.25) },
+    { action: 'Kick', count: Math.floor(cloudStats.total_actions * 0.16) },
+    { action: 'Jump', count: Math.floor(cloudStats.total_actions * 0.12) },
+    { action: 'Walk', count: Math.floor(cloudStats.total_actions * 0.39) },
+    { action: 'Duck', count: Math.floor(cloudStats.total_actions * 0.08) },
   ];
 
   const bodyUsageData = [
@@ -47,11 +77,19 @@ export function Analytics({ onNavigate }: AnalyticsProps) {
   ];
 
   const metrics = [
-    { label: 'Average Accuracy', value: '89.7%', change: '+4.2%', icon: Target, color: 'cyan' },
-    { label: 'Total Sessions', value: totalStats.sessions.toString(), change: '+0', icon: Activity, color: 'green' },
-    { label: 'Total Time', value: `${totalStats.hours.toFixed(1)}h`, change: '+0h', icon: Clock, color: 'blue' },
-    { label: 'Actions Performed', value: '1,337', change: '+342', icon: TrendingUp, color: 'purple' },
+    { label: 'Average Accuracy', value: `${cloudStats.accuracy}%`, change: '+4.2%', icon: Target, color: 'cyan' },
+    { label: 'Total Sessions', value: cloudStats.sessions_count.toLocaleString(), change: '+0', icon: Activity, color: 'green' },
+    { label: 'Total Time', value: `${(cloudStats.total_seconds / 3600).toFixed(1)}h`, change: '+0h', icon: Clock, color: 'blue' },
+    { label: 'Actions Performed', value: cloudStats.total_actions.toLocaleString(), change: '+0', icon: TrendingUp, color: 'purple' },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-cyan-500 animate-pulse text-xl font-bold">Loading Cloud Analytics...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] p-8">
@@ -59,7 +97,7 @@ export function Analytics({ onNavigate }: AnalyticsProps) {
       <div className="flex items-center justify-between mb-12">
         <div className="flex items-center gap-4">
           <button
-            onClick={() => onNavigate('home')}
+            onClick={() => onNavigate('dashboard')}
             className="p-3 hover:bg-white/5 rounded-2xl transition-colors"
           >
             <ArrowLeft className="w-6 h-6" />

@@ -1,5 +1,7 @@
 import type { NormalizedLandmarkList } from '@mediapipe/pose';
 import { InputController } from '../engine/InputController';
+import { supabase } from '../lib/supabase';
+import { authManager } from './AuthManager';
 
 export interface ActionMapping {
     id: string;
@@ -237,30 +239,50 @@ export class ProfileManager {
         this.userData.session_start_timestamp = Date.now();
         await this.saveUser();
         console.log(`[ProfileManager] Session started for ${active.name}`);
+
+        // Reset action counter for new session
+        InputController.resetSessionActionCount();
     }
 
     public static async onEngineStop() {
         if (!this.userData.session_start_timestamp) return;
 
         const active = this.getActive();
-        if (!active) {
-            this.userData.session_start_timestamp = null;
-            await this.saveUser();
-            return;
-        }
-
         const durationMs = Date.now() - this.userData.session_start_timestamp;
         const hours = durationMs / (1000 * 60 * 60);
 
-        active.total_hours_used += hours;
-        active.total_sessions += 1;
-        active.updated_at = Date.now();
+        if (active) {
+            active.total_hours_used += hours;
+            active.total_sessions += 1;
+            active.updated_at = Date.now();
+            console.log(`[ProfileManager] Session ended locally. Added ${hours.toFixed(4)} hours to ${active.name}.`);
+        }
+
+        // Cloud Sync: Atomic Increment to All-Time Stats
+        const user = authManager.getUser();
+        if (user && user.id !== 'guest-user') {
+            try {
+                const actionCount = InputController.getSessionActionCount();
+                const { error } = await supabase.rpc('increment_user_usage', {
+                    target_user_id: user.id,
+                    inc_hours: parseFloat(hours.toFixed(6)),
+                    inc_actions: actionCount,
+                    inc_sessions: 1
+                });
+
+                if (error) throw error;
+                console.log(`[ProfileManager] Cloud usage incremented for user: ${user.id} (Actions: ${actionCount})`);
+            } catch (err) {
+                console.error('[ProfileManager] Failed to increment cloud usage:', err);
+            }
+        }
 
         this.userData.session_start_timestamp = null;
         await this.saveUser();
         await this.saveProfiles();
 
-        console.log(`[ProfileManager] Session ended. Added ${hours.toFixed(4)} hours to ${active.name}.`);
+        // Reset counter
+        InputController.resetSessionActionCount();
     }
 
     public static getTrialStatus() {

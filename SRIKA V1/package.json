@@ -106,7 +106,12 @@
                   "differentialPackage": false,
                   "shortcutName": "SRIKA",
                   "artifactName": "SRIKA-Setup-${version}.${ext}",
-                  "include": "installer-resources/installer.nsh"
+                  "include": "installer-resources/installer.nsh",
+                  "installerIcon": "installer-resources/icon.ico",
+                  "uninstallerIcon": "installer-resources/icon.ico",
+                  "installerHeaderIcon": "installer-resources/icon.ico",
+                  "installerSidebar": "installer-resources/icon.png",
+                  "installerHeader": "installer-resources/icon.png"
             },
             "extraFiles": [
                   {

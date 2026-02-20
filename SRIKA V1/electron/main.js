@@ -80,6 +80,8 @@ if (!gotTheLock) {
                     assetPath = logicalPath.replace('mediapipe/', '_mediapipe/');
                 } else if (logicalPath.startsWith('engine/')) {
                     assetPath = logicalPath.replace('engine/', '_engine/');
+                } else if (logicalPath.startsWith('srika_native/')) {
+                    assetPath = logicalPath.replace('srika_native/', '_srika_native/');
                 }
 
                 const filePath = path.join(process.resourcesPath, assetPath);
@@ -409,68 +411,103 @@ function startPythonBridge() {
 // Download a URL to a file, emitting progress % as we go
 function downloadFile(url, destPath, onProgress) {
     return new Promise((resolve, reject) => {
-        let file;
         let redirectCount = 0;
         const maxRedirects = 5;
 
         const request = (reqUrl) => {
+            logToFile(`[Update] Requesting: ${reqUrl}`);
             const req = https.get(reqUrl, {
                 headers: {
                     'User-Agent': 'SRIKA-Updater',
-                    'Cache-Control': 'no-cache'
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive'
                 },
-                timeout: 30000 // 30s timeout
-            }, (res) => {
+                timeout: 15000 // 15s connection timeout
+            });
+
+            req.on('response', (res) => {
                 // Handle Redirects
-                if ([301, 302, 307, 308].includes(res.statusCode)) {
+                if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
+                    res.resume(); // CRITICAL: Consume the response stream to free the socket
                     if (redirectCount >= maxRedirects) {
                         return reject(new Error('Too many redirects'));
                     }
                     redirectCount++;
-                    logToFile(`[Update] Redirect (${redirectCount}) to ${res.headers.location}`);
-                    return request(res.headers.location);
+                    const nextUrl = res.headers.location;
+                    if (!nextUrl) return reject(new Error(`Redirect status ${res.statusCode} without location header`));
+
+                    logToFile(`[Update] Redirect (${redirectCount}) to ${nextUrl}`);
+                    return request(nextUrl);
                 }
 
                 if (res.statusCode !== 200) {
+                    res.resume();
                     return reject(new Error(`HTTP ${res.statusCode} at ${reqUrl}`));
                 }
 
-                // Create WriteStream ONLY on 200 OK
-                file = fs.createWriteStream(destPath);
                 const total = parseInt(res.headers['content-length'] || '0', 10);
                 let downloaded = 0;
+                const file = fs.createWriteStream(destPath);
+
+                // --- INACTIVITY TIMEOUT ---
+                // If we don't receive data for 30s, the connection is likely dead
+                let inactivityTimer;
+                const resetInactivityTimer = () => {
+                    clearTimeout(inactivityTimer);
+                    inactivityTimer = setTimeout(() => {
+                        req.destroy();
+                        res.destroy();
+                        file.destroy();
+                        reject(new Error('Download stalled: No data received for 30 seconds'));
+                    }, 30000);
+                };
+                resetInactivityTimer();
 
                 res.on('data', (chunk) => {
+                    resetInactivityTimer();
                     downloaded += chunk.length;
-                    if (total > 0 && onProgress) onProgress(Math.round((downloaded / total) * 85));
+                    if (total > 0 && onProgress) {
+                        // Spread download across 0-85% range
+                        onProgress(Math.round((downloaded / total) * 85));
+                    }
                 });
 
-                res.pipe(file);
+                res.on('error', (err) => {
+                    clearTimeout(inactivityTimer);
+                    file.destroy();
+                    reject(err);
+                });
+
+                res.on('end', () => {
+                    clearTimeout(inactivityTimer);
+                    file.end();
+                });
 
                 file.on('finish', () => {
-                    file.close();
+                    logToFile(`[Update] Download complete: ${downloaded} bytes`);
                     resolve();
                 });
 
                 file.on('error', (err) => {
-                    fs.unlink(destPath, () => { }); // Clean up partial file
+                    clearTimeout(inactivityTimer);
+                    req.destroy();
+                    res.destroy();
                     reject(err);
                 });
 
-                res.on('error', (err) => {
-                    file.destroy();
-                    fs.unlink(destPath, () => { });
-                    reject(err);
-                });
+                res.pipe(file);
             });
 
             req.on('timeout', () => {
                 req.destroy();
-                reject(new Error('Download timed out after 30 seconds'));
+                reject(new Error('Connection timed out'));
             });
 
-            req.on('error', reject);
+            req.on('error', (err) => {
+                reject(err);
+            });
         };
+
         request(url);
     });
 }
@@ -490,92 +527,118 @@ async function startInAppUpdate(version, downloadUrl, hash) {
     updateInProgress = true;
 
     const sendProgress = (percent, status) => {
-        logToFile(`[Update] ${percent}% — ${status}`);
+        logToFile(`[Update Status] ${percent}% — ${status}`);
         if (win) win.webContents.send('update-progress', { percent, status });
     };
 
     try {
-        // 1. Notify renderer — show the update overlay
+        logToFile(`[Update] Starting update process for v${version}`);
         if (win) win.webContents.send('update-found', { version });
-        sendProgress(0, `Preparing update to v${version}...`);
+        sendProgress(0, `Initializing update v${version}...`);
 
-        // 2. Create cache directory in APPDATA (no admin needed)
+        // 1. Setup paths
         const cacheDir = path.join(userDataPath, 'update-cache');
         const zipPath = path.join(cacheDir, `${version}.zip`);
         const extractDir = path.join(cacheDir, `extracted-${version}`);
-        if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-        if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
+
+        logToFile(`[Update] Cache Dir: ${cacheDir}`);
+
+        // 2. Clear old state
+        try {
+            if (!fs.existsSync(cacheDir)) {
+                fs.mkdirSync(cacheDir, { recursive: true });
+                logToFile(`[Update] Created cache directory`);
+            }
+            if (fs.existsSync(extractDir)) {
+                logToFile(`[Update] Cleaning old extraction directory...`);
+                fs.rmSync(extractDir, { recursive: true, force: true });
+            }
+            if (fs.existsSync(zipPath)) {
+                logToFile(`[Update] Removing old zip file...`);
+                fs.unlinkSync(zipPath);
+            }
+        } catch (e) {
+            logToFile(`[Update] Setup WARNING: ${e.message}`);
+            // Non-fatal, we'll try to overwrite
+        }
 
         // 3. Download
-        sendProgress(2, 'Downloading update...');
-        await downloadFile(downloadUrl, zipPath, (p) => sendProgress(p, 'Downloading...'));
+        sendProgress(2, 'Connecting to download server...');
+        logToFile(`[Update] Initializing download from: ${downloadUrl}`);
+
+        await downloadFile(downloadUrl, zipPath, (p) => {
+            // Ensure we only send progress if it actually changed or is significant
+            sendProgress(p, 'Downloading...');
+        });
 
         // 4. Verify integrity
-        sendProgress(86, 'Verifying integrity...');
+        sendProgress(86, 'Verifying file integrity...');
+        logToFile(`[Update] Verifying SHA256...`);
         if (!verifySha256(zipPath, hash)) {
-            throw new Error('SHA-256 mismatch — corrupted download');
+            throw new Error('Integrity check failed: The downloaded file is corrupted or incomplete.');
         }
-        sendProgress(88, 'Verified ✓');
+        sendProgress(88, 'Integrity verified ✓');
 
-        // 5. Extract using PowerShell (built-in on Windows)
-        sendProgress(90, 'Extracting files...');
+        // 5. Extract
+        sendProgress(90, 'Extracting package...');
+        logToFile(`[Update] Extracting with PowerShell...`);
         const { execSync } = require('child_process');
-        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force"`);
+        // Use -ErrorAction Stop to catch PS errors
+        execSync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force"`, { stdio: 'inherit' });
+        logToFile(`[Update] Extraction complete.`);
 
-        // 6. Build the elevated PowerShell swap script
-        sendProgress(95, 'Applying update...');
+        // 6. Build Swap Script
+        sendProgress(95, 'Preparing final application...');
         const appDir = path.dirname(process.execPath);
         const swapScript = path.join(cacheDir, 'swap.ps1');
+
+        logToFile(`[Update] Creating swap script at: ${swapScript}`);
         const psContent = `
 $src = '${extractDir.replace(/'/g, "''")}';
 $dst = '${appDir.replace(/'/g, "''")}';
 $exe = '${process.execPath.replace(/'/g, "''")}';
 $AppPid = ${process.pid};
 
-# Wait for Srika to exit
-Write-Host "Waiting for process $AppPid to exit...";
+Write-Host "SRIKA Update Service Started";
 $retry = 0;
 while ((Get-Process -Id $AppPid -ErrorAction SilentlyContinue) -and ($retry -lt 20)) {
+    Write-Host "Waiting for Srika to exit... ($retry/20)";
     Start-Sleep -Seconds 1;
     $retry++;
 }
 
-# Force kill if still alive
 if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) {
+    Write-Host "Forcing process termination...";
     Stop-Process -Id $AppPid -Force -ErrorAction SilentlyContinue;
 }
 
-# Fix Permissions: Recursively clear Read-Only attributes
-Write-Host "Clearing Read-Only attributes in $dst...";
-attrib -R "$dst\*" /S /D
+Write-Host "Unlocking destination files...";
+attrib -R "$dst\\*" /S /D
 
-# Apply update using Robocopy Mirror (Clean Update)
-# /MIR mirrors a directory tree (equivalent to /E plus /PURGE)
-# /A-:R ensures Read-Only attributes are stripped from copied files
-# /R:2 retries 2 times on failure, /W:2 waits 2 seconds between retries
-Write-Host "Applying update files...";
+Write-Host "Syncing files...";
 robocopy "$src" "$dst" /MIR /A-:R /R:2 /W:2 /NFL /NDL /NJH /NJS | Out-Null;
 
-# Relaunch the app
-Write-Host "Relaunching Srika...";
+Write-Host "Update Successful. Relaunching...";
 Start-Process "$exe";
 `;
         fs.writeFileSync(swapScript, psContent, 'utf8');
 
-        // 7. Tell renderer we're about to restart
-        sendProgress(99, 'Restarting...');
+        // 7. Restart phase
+        sendProgress(99, 'Update ready. Restarting app...');
         if (win) win.webContents.send('update-complete', { version });
 
-        // 8. Launch the elevated swap script and quit
-        await new Promise(r => setTimeout(r, 600)); // small pause for UI to show 100%
+        logToFile(`[Update] Handing over to swap script. Quitting.`);
+        await new Promise(r => setTimeout(r, 1000));
+
         const { exec } = require('child_process');
         exec(`powershell -NoProfile -Command "Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File \\"${swapScript}\\"' -Verb RunAs"`, (err) => {
-            if (err) logToFile(`[Update] Swap script launch error: ${err.message}`);
+            if (err) logToFile(`[Update] CRITICAL: Failed to launch swap script: ${err.message}`);
         });
-        setTimeout(() => app.quit(), 800);
+
+        setTimeout(() => app.quit(), 1000);
 
     } catch (err) {
-        logToFile(`[Update] FAILED: ${err.message}`);
+        logToFile(`[Update] FATAL ERROR: ${err.message}`);
         if (win) win.webContents.send('update-error', { message: err.message });
         updateInProgress = false;
     }
@@ -602,7 +665,7 @@ function checkForUpdates() {
         return;
     }
 
-    const GITHUB_API = 'https://api.github.com/repos/FrigonF/SRIKA/releases/latest';
+    const GITHUB_API = 'https://api.github.com/repos/FrigonF/Srika/releases/latest';
 
     const req = https.get(GITHUB_API, {
         headers: {

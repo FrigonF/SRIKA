@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ArrowLeft, Camera, Keyboard, Shield, Info, HardDrive } from 'lucide-react';
+import { ArrowLeft, Camera, Keyboard, Shield, Info, HardDrive, Moon, Sun, Monitor } from 'lucide-react';
 import { settingsManager, SettingsSchema } from '../managers/SettingsManager';
 
 interface SettingsProps {
@@ -110,18 +110,30 @@ export function Settings({ onNavigate }: SettingsProps) {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Theme</label>
+                    <label className="block text-sm font-medium text-gray-400 mb-3">Appearance</label>
                     <div className="grid grid-cols-3 gap-3">
-                      {(['dark', 'light', 'auto'] as const).map(theme => (
+                      {([
+                        { id: 'dark', label: 'Dark', icon: Moon, desc: 'Always dark', swatch: 'from-slate-900 to-slate-800' },
+                        { id: 'light', label: 'Light', icon: Sun, desc: 'Always light', swatch: 'from-indigo-50 to-white' },
+                        { id: 'auto', label: 'Auto', icon: Monitor, desc: 'Follows system', swatch: 'from-slate-700 to-indigo-50' },
+                      ] as const).map(({ id, label, icon: Icon, desc, swatch }) => (
                         <button
-                          key={theme}
-                          onClick={() => settingsManager.update('general', { theme })}
-                          className={`p-4 border-2 rounded-2xl font-semibold capitalize ${settings.general.theme === theme
-                            ? 'bg-gradient-to-br from-cyan-500 to-blue-500 border-cyan-500'
-                            : 'bg-[#0a0a0f]/50 border-gray-700 hover:border-gray-600'
+                          key={id}
+                          onClick={() => settingsManager.update('general', { theme: id })}
+                          className={`relative flex flex-col items-center gap-2 p-4 border-2 rounded-2xl font-semibold transition-all ${settings.general.theme === id
+                              ? 'border-cyan-400 bg-cyan-500/10 shadow-[0_0_16px_rgba(34,211,238,0.2)]'
+                              : 'border-gray-700 bg-[#0a0a0f]/50 hover:border-gray-500 hover:bg-white/5'
                             }`}
                         >
-                          {theme}
+                          {/* Mini preview swatch */}
+                          <div className={`w-full h-8 rounded-lg bg-gradient-to-r ${swatch} border border-white/10`} />
+                          <Icon className={`w-5 h-5 ${settings.general.theme === id ? 'text-cyan-400' : 'text-gray-400'
+                            }`} />
+                          <span className={settings.general.theme === id ? 'text-cyan-300' : 'text-gray-200'}>{label}</span>
+                          <span className="text-[10px] text-gray-500 -mt-1">{desc}</span>
+                          {settings.general.theme === id && (
+                            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_2px_rgba(34,211,238,0.5)]" />
+                          )}
                         </button>
                       ))}
                     </div>

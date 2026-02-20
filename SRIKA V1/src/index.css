@@ -34,24 +34,180 @@
   scrollbar-color: #06b6d4 rgba(15, 23, 42, 0.5);
 }
 
-/* Theme Variables - Defaults to Light */
+/* ─── THEME VARIABLES ───────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #020617;
-  --border: rgba(0, 0, 0, 0.1);
-  --ring: #3b82f6;
-  --card-bg: rgba(255, 255, 255, 0.8);
-  --card-border: rgba(0, 0, 0, 0.1);
-}
-
-/* Dark Mode Overrides */
-.dark {
-  --background: #0f172a;
+  --background: #0a0a0f;
   --foreground: #ffffff;
   --border: rgba(255, 255, 255, 0.1);
-  --card-bg: rgba(30, 41, 59, 0.8);
-  --card-border: rgba(255, 255, 255, 0.1);
+  --card-bg: rgba(26, 26, 46, 0.8);
+  --card-border: rgba(6, 182, 212, 0.2);
+
+  /* Semantic app colors (dark default) */
+  --app-bg: #0a0a0f;
+  --app-surface: #1a1a2e;
+  --app-surface-2: #0f0f1a;
+  --app-surface-alt: #0a0a0f;
+  --app-text: #ffffff;
+  --app-text-muted: #9ca3af;
+  --app-text-dim: #6b7280;
+  --app-border: rgba(255, 255, 255, 0.08);
+  --app-input-bg: rgba(10, 10, 15, 0.5);
+  --app-hover: rgba(255, 255, 255, 0.05);
+  --app-accent: rgba(6, 182, 212, 0.2);
+}
+
+/* ─── DARK CLASS (explicit dark, same as root defaults) ─────────────────── */
+.dark {
+  --background: #0a0a0f;
+  --foreground: #ffffff;
+  --card-bg: rgba(26, 26, 46, 0.8);
+  --card-border: rgba(6, 182, 212, 0.2);
   color-scheme: dark;
+}
+
+/* ─── LIGHT THEME ───────────────────────────────────────────────────────── */
+.light {
+  color-scheme: light;
+
+  --background: #f0f4ff;
+  --foreground: #0f172a;
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --card-border: rgba(99, 102, 241, 0.2);
+
+  /* Semantic app colors */
+  --app-bg: #eef2ff;
+  --app-surface: #ffffff;
+  --app-surface-2: #f8f9ff;
+  --app-surface-alt: #f1f5ff;
+  --app-text: #0f172a;
+  --app-text-muted: #475569;
+  --app-text-dim: #64748b;
+  --app-border: rgba(99, 102, 241, 0.15);
+  --app-input-bg: rgba(255, 255, 255, 0.8);
+  --app-hover: rgba(99, 102, 241, 0.08);
+  --app-accent: rgba(99, 102, 241, 0.15);
+}
+
+/* ─── LIGHT: remap hardcoded dark Tailwind classes ──────────────────────── */
+/* These classes are used throughout the app with dark hex values. 
+   Override them in light mode without editing any component. */
+
+.light .bg-\[\#0a0a0f\],
+.light .bg-\[\#0a0a0f\]\/50 {
+  background-color: var(--app-surface-alt) !important;
+}
+
+.light .bg-\[\#1a1a2e\],
+.light .bg-\[\#1a1a2e\]\/80 {
+  background-color: var(--app-surface) !important;
+}
+
+.light .bg-\[\#0f0f1a\],
+.light .bg-\[\#0f0f1a\]\/80 {
+  background-color: var(--app-surface-2) !important;
+}
+
+/* Page/screen backgrounds */
+.light .from-\[\#0a0a0f\] {
+  --tw-gradient-from: #eef2ff !important;
+}
+
+.light .from-\[\#0f172a\] {
+  --tw-gradient-from: #e0e7ff !important;
+}
+
+.light .via-\[\#0a0a0f\] {
+  --tw-gradient-via: #eef2ff !important;
+}
+
+/* Text overrides */
+.light .text-gray-400 {
+  color: var(--app-text-muted) !important;
+}
+
+.light .text-gray-500 {
+  color: var(--app-text-dim) !important;
+}
+
+.light .text-gray-600 {
+  color: #64748b !important;
+}
+
+.light .text-gray-300 {
+  color: #475569 !important;
+}
+
+.light .text-white {
+  color: var(--app-text) !important;
+}
+
+/* Input / selects */
+.light select,
+.light input[type="text"] {
+  background-color: var(--app-input-bg) !important;
+  color: var(--app-text) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Card panels with gradient borders */
+.light .border-cyan-500\/20 {
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+
+.light .border-cyan-500\/10 {
+  border-color: rgba(99, 102, 241, 0.15) !important;
+}
+
+.light .border-gray-700 {
+  border-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+.light .border-gray-600 {
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Gradient card backgrounds */
+.light .from-\[\#1a1a2e\]\/80.to-\[\#0f0f1a\]\/80,
+.light [class*="from-[#1a1a2e]"] {
+  --tw-gradient-from: rgba(255, 255, 255, 0.95) !important;
+}
+
+.light [class*="to-[#0f0f1a]"] {
+  --tw-gradient-to: rgba(238, 242, 255, 0.95) !important;
+}
+
+/* Hover states */
+.light .hover\:bg-white\/5:hover {
+  background-color: var(--app-hover) !important;
+}
+
+.light .bg-white\/5 {
+  background-color: rgba(99, 102, 241, 0.08) !important;
+}
+
+.light .bg-white\/10 {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+
+/* TaskBar / VerticalTaskBar sidebar */
+.light .from-\[\#1a1a2e\] {
+  --tw-gradient-from: #ffffff !important;
+}
+
+/* Page wrapper background */
+.light body,
+.light #root {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+}
+
+/* ─── SMOOTH THEME TRANSITION ───────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: ease-in-out;
 }
 
 /* Patch missing Tailwind v4 classes for static index.css */
